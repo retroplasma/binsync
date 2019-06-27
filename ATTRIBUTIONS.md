@@ -1,7 +1,7 @@
 # Attributions
 
 
-**Nntp Client Library**
+**Nntp Client Library** (modified)
 
 * *by Scott Garland*, MIT License
 
