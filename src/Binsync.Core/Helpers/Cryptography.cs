@@ -10,12 +10,14 @@ namespace Binsync.Core.Helpers
 	{
 		#region Hashing
 
-		public static byte[] SHA1(this byte[] data){
-			return Helpers.Cryptography.HashArray (System.Security.Cryptography.SHA1.Create (), data);
+		public static byte[] SHA1(this byte[] data)
+		{
+			return Helpers.Cryptography.HashArray(System.Security.Cryptography.SHA1.Create(), data);
 		}
 
-		public static byte[] SHA256(this byte[] data){
-			return Helpers.Cryptography.HashArray (System.Security.Cryptography.SHA256.Create (), data);
+		public static byte[] SHA256(this byte[] data)
+		{
+			return Helpers.Cryptography.HashArray(System.Security.Cryptography.SHA256.Create(), data);
 		}
 
 		/// <summary>
@@ -49,8 +51,9 @@ namespace Binsync.Core.Helpers
 
 		public static byte[] HashArray(HashAlgorithm algorithm, byte[] data)
 		{
-			using (MemoryStream ms = new MemoryStream(data)) {
-				return HashBlock (algorithm, ms, 0, ms.Length);
+			using (MemoryStream ms = new MemoryStream(data))
+			{
+				return HashBlock(algorithm, ms, 0, ms.Length);
 			}
 		}
 		#endregion
@@ -80,19 +83,19 @@ namespace Binsync.Core.Helpers
 			symmetricKey.Mode = CipherMode.CBC;
 			symmetricKey.KeySize = 256;
 			// default padding: PKCS7
-			
+
 			ICryptoTransform cryptor;
 			switch (cryptoType)
 			{
-			case CryptoType.Encryptor:
-				cryptor = symmetricKey.CreateEncryptor(keyBytes, iv);
-				break;
-			case CryptoType.Decryptor:
-				cryptor = symmetricKey.CreateDecryptor(keyBytes, iv);
-				break;
-			default:
-				cryptor = null;
-				break;
+				case CryptoType.Encryptor:
+					cryptor = symmetricKey.CreateEncryptor(keyBytes, iv);
+					break;
+				case CryptoType.Decryptor:
+					cryptor = symmetricKey.CreateDecryptor(keyBytes, iv);
+					break;
+				default:
+					cryptor = null;
+					break;
 			}
 			return cryptor;
 		}
@@ -133,7 +136,7 @@ namespace Binsync.Core.Helpers
 
 			var compare = 0;
 			for (var i = 0; i < array1.Length; i++)
-				compare |= array1[i] ^ array2[i]; 
+				compare |= array1[i] ^ array2[i];
 
 			return compare == 0;
 		}

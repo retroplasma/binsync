@@ -13,7 +13,7 @@ namespace Binsync.Core
 
 		public void Log(string str, params object[] objs)
 		{
-			logger (str, objs);
+			logger(str, objs);
 		}
 	}
 }

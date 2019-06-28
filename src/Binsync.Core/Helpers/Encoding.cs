@@ -27,19 +27,19 @@ namespace Binsync.Core.Helpers
 
 		public static string ToHexString(this byte[] bytes)
 		{
-			return ByteArrayToHexString (bytes);
+			return ByteArrayToHexString(bytes);
 		}
 
 		// https://stackoverflow.com/questions/311165/how-do-you-convert-byte-array-to-hexadecimal-string-and-vice-versa
 		public static byte[] FromHexToBytes(this string hex)
 		{
-			int NumberChars = hex.Length/2;
+			int NumberChars = hex.Length / 2;
 			byte[] bytes = new byte[NumberChars];
 			using (var sr = new StringReader(hex))
 			{
 				for (int i = 0; i < NumberChars; i++)
-					bytes[i] = 
-						Convert.ToByte(new string(new char[2]{(char)sr.Read(), (char)sr.Read()}), 16);
+					bytes[i] =
+						Convert.ToByte(new string(new char[2] { (char)sr.Read(), (char)sr.Read() }), 16);
 			}
 			return bytes;
 		}
@@ -48,7 +48,8 @@ namespace Binsync.Core.Helpers
 
 		#region Base64
 
-		public static class Base64{
+		public static class Base64
+		{
 			static public string EncodeTo64(string toEncode)
 			{
 				byte[] toEncodeAsBytes
@@ -57,14 +58,14 @@ namespace Binsync.Core.Helpers
 					= System.Convert.ToBase64String(toEncodeAsBytes);
 				return returnValue;
 			}
-			
+
 			static public string EncodeTo64(byte[] toEncodeAsBytes)
 			{
 				string returnValue
 					= System.Convert.ToBase64String(toEncodeAsBytes);
 				return returnValue;
 			}
-			
+
 			static public string DecodeFrom64(string encodedData)
 			{
 				byte[] encodedDataAsBytes
@@ -73,7 +74,7 @@ namespace Binsync.Core.Helpers
 					System.Text.ASCIIEncoding.ASCII.GetString(encodedDataAsBytes);
 				return returnValue;
 			}
-			
+
 			static public byte[] DecodeFrom64ToBytes(string encodedData)
 			{
 				byte[] encodedDataAsBytes
@@ -113,9 +114,9 @@ namespace Binsync.Core.Helpers
 			/// <param name="input">Input.</param>
 			public static String Encode(BigInteger input)
 			{
-				if (input.Sign < 0) 
+				if (input.Sign < 0)
 					throw new ArgumentOutOfRangeException();
-				
+
 				var result = new Stack<char>();
 				while (!input.IsZero)
 				{
@@ -127,16 +128,16 @@ namespace Binsync.Core.Helpers
 			}
 		}
 		#endregion
-	
+
 		#region UTF8
 		public static byte[] GetBytesUTF8(this string str)
 		{
-			return System.Text.Encoding.UTF8.GetBytes (str);
+			return System.Text.Encoding.UTF8.GetBytes(str);
 		}
 
 		public static string GetStringUTF8(this byte[] bytes)
 		{
-			return System.Text.Encoding.UTF8.GetString (bytes);
+			return System.Text.Encoding.UTF8.GetString(bytes);
 		}
 		#endregion
 	}
