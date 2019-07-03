@@ -17,6 +17,7 @@ namespace Binsync.Core.Services
 			public StorageDummy(string storagePath)
 			{
 				this.storagePath = storagePath;
+				Directory.CreateDirectory(storagePath);
 			}
 
 			readonly string storagePath;
@@ -39,7 +40,7 @@ namespace Binsync.Core.Services
 			//	System.Threading.Thread.Sleep ((int)milliseconds);
 			//}
 
-			public void Store(string id, byte[] data)
+			public bool Store(string id, byte[] data)
 			{
 #if LAG
 				System.Threading.Thread.Sleep (lag());
@@ -49,12 +50,13 @@ namespace Binsync.Core.Services
 				lock (filePath)
 				{
 					if (File.Exists(filePath))
-						throw new Exception("Article exists already");
+						return false;
 #if !DONT_REALLY_SAVE
 
 					File.WriteAllBytes(filePath, data);
 #endif
 				}
+				return true;
 			}
 
 			public byte[] Retrieve(string id)
@@ -149,9 +151,7 @@ namespace Binsync.Core.Services
 				finalData = ms.ToArray();
 			}
 
-			storageDummy.Store(id, finalData);
-
-			return true;
+			return storageDummy.Store(id, finalData);
 		}
 	}
 }
