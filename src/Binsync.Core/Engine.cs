@@ -14,15 +14,13 @@ namespace Binsync.Core
 {
 	public class Engine
 	{
-		AssuranceContainer assuranceContainer;
 		Identifier identifier;
-		DiskCache diskCache;
 		Encryption encryption;
 		Generator generator;
-		RawCacheDiskDictionary rawCacheDiskDictionary;
 		IServiceFactory svcFactory;
 		int totalConnections; // download + upload
 		int uploadConnections;
+		DB db;
 
 		public static Engine CreateDummy(string storageCode, string password, int totalConnections, int uploadConnections)
 		{
@@ -43,19 +41,18 @@ namespace Binsync.Core
 			identifier = new Identifier(key);
 			encryption = new Encryption(identifier);
 			generator = new Generator(identifier);
-			diskCache = new Caches.DiskCache(cachePath, identifier.PublicHash);
-			assuranceContainer = new AssuranceContainer(diskCache);
-			rawCacheDiskDictionary = new RawCacheDiskDictionary(diskCache);
 			this.totalConnections = totalConnections;
 			this.uploadConnections = totalConnections;
 			conSemT = new SemaphoreSlim(totalConnections, totalConnections);
 			conSemU = new SemaphoreSlim(uploadConnections, uploadConnections);
+
+			db = new DB(Path.Combine(cachePath, identifier.PublicHash));
 		}
 
 		public void Load()
 		{
-			assuranceContainer.RefillNewAssuranceNOTTHREADSAFE();
-			assuranceContainer.RefillMainAssuranceNOTTHREADSAFE();
+			//assuranceContainer.RefillNewAssuranceNOTTHREADSAFE();
+			//assuranceContainer.RefillMainAssuranceNOTTHREADSAFE();
 		}
 
 		public async Task UploadFile(string localPath, string remotePath)
@@ -96,57 +93,58 @@ namespace Binsync.Core
 
 				// cache data for parity creation
 				var hexHash = hash.ToHexString();
-				await rawCacheSem.WaitAsync();
-				try
-				{
-					if (!rawCacheDiskDictionary.ContainsKey(hexHash))
-						rawCacheDiskDictionary.Add(hexHash, bytes);
-				}
-				finally { rawCacheSem.Release(); }
 			});
 		}
 
-		SemaphoreSlim rawCacheSem = new SemaphoreSlim(1, 1);
+		SemaphoreSlim flushParitySem = new SemaphoreSlim(1, 1);
+
 		async Task flushParity(bool force)
 		{
-			await rawCacheSem.WaitAsync();
+			await flushParitySem.WaitAsync();
 			try
 			{
-				if (!force && rawCacheDiskDictionary.Count < Constants.DataBeforeParity)
-					return;
+				if (force) throw new NotImplementedException("force flushParity not implemented");
 
-				// create parities
-				var sw = System.Diagnostics.Stopwatch.StartNew();
-				Constants.Logger.Log("creating parity");
-				var input = rawCacheDiskDictionary.Keys.Select(x => rawCacheDiskDictionary[x].GetCompressed()).ToArray();
-				var parities = Integrity.Parity.CreateParity(input, Constants.ParityCount);
-				Constants.Logger.Log("parity created in {0}s", sw.ElapsedMilliseconds / 1000.0);
-
-				// upload parities
-				for (int i = 0; i < parities.Length; i++)
+				var d = db.GetProcessingParityRelations();
+				foreach (var key in d.Keys)
 				{
-					var bytes = parities[i];
-					var hash = bytes.SHA256();
-					var indexId = this.generator.GenerateRawOrParityID(hash);
+					var k = (long)key;
+					var v = d[k] as List<DB.SQLMap.ParityRelation>;
+					Console.WriteLine($"{k}: {v.Count}");
 
-					await deduplicate(indexId, async () =>
+					// create parities
+					var sw = System.Diagnostics.Stopwatch.StartNew();
+					Constants.Logger.Log("creating parity");
+					var input = v.Select(x => x.TmpDataCompressed).ToArray();
+					var parities = Integrity.Parity.CreateParity(input, Constants.ParityCount);
+					Constants.Logger.Log("parity created in {0}s", sw.ElapsedMilliseconds / 1000.0);
+
+					// upload parities
+					byte[][] parityHashes = new byte[parities.Length][];
+					for (int i = 0; i < parities.Length; i++)
 					{
-						await _uploadChunk(bytes, hash, indexId, isParity: true);
-					});
-				}
+						var bytes = parities[i];
+						var hash = bytes.SHA256();
+						parityHashes[i] = hash;
+						var indexId = this.generator.GenerateRawOrParityID(hash);
 
-				// add relations to assurance and clear raw
-				lock (assuranceContainer.AssuranceLock)
-				{
-					this.assuranceContainer.AddRelationsNOTTHREADSAFE(
-						rawCacheDiskDictionary.Keys.Select(x => x.FromHexToBytes()).ToList(),
-						parities.Select(x => x.SHA256()).ToList())
-					;
+						await deduplicate(indexId, async () =>
+						{
+							await _uploadChunk(bytes, hash, indexId, isParity: true);
+						});
+					}
+
+					// clear
+					db.CloseParityRelations(k, input.Length, parityHashes);
+
 				}
-				rawCacheDiskDictionary.Clear();
 			}
-			finally { rawCacheSem.Release(); }
+			finally
+			{
+				flushParitySem.Release();
+			}
 		}
+
 
 		async Task _uploadChunk(byte[] bytes, byte[] hash, byte[] indexId, bool isParity = false)
 		{
@@ -172,9 +170,13 @@ namespace Binsync.Core
 				else
 				{
 					Constants.Logger.Log($"Upload ok with r = {r}");
-					lock (assuranceContainer.AssuranceLock)
+					if (isParity)
 					{
-						assuranceContainer.AddNewAssuranceNOTTHREADSAFE(indexId, (uint)r, hash, (uint)lengthForAssurance);
+						db.AddNewAssurance(indexId, (uint)r, hash, (uint)lengthForAssurance);
+					}
+					else
+					{
+						db.AddNewAssuranceAndTmpData(indexId, (uint)r, hash, (uint)lengthForAssurance, compressed);
 					}
 					return;
 				}
@@ -247,13 +249,9 @@ namespace Binsync.Core
 				}
 				else
 				{
-					lock (assuranceContainer)
+					if (null != db.FindMatchingSegmentInAssurancesByIndexId(indexId))
 					{
-						if (null != this.assuranceContainer.FindMatchingSegmentInAssurancesByIndexIdNOTTHREADSAFE(indexId))
-						{
-							// assurance dedup
-							return;
-						}
+						return;
 					}
 					dedupLive.Add(indexIdStr, new dedupContainer());
 				}

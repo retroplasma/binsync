@@ -4,6 +4,10 @@
     <ProjectReference Include="..\Binsync.Dependencies\Binsync.Dependencies.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="sqlite-net-pcl" Version="1.5.231" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>    
   </PropertyGroup>

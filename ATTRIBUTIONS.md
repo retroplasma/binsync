@@ -34,3 +34,8 @@
 **Mono + .NET Core**
 
 * *by Microsoft*, MIT License
+
+
+**SQLite-net**
+
+* *by Krueger Systems*, MIT License

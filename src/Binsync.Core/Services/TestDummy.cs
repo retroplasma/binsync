@@ -1,5 +1,5 @@
 //#define LAG
-//#define DONT_REALLY_SAVE
+#define DONT_REALLY_SAVE
 //#define THROTTLE_DOWN_SPEED
 
 using System;
