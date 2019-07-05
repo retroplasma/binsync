@@ -103,7 +103,10 @@ namespace Binsync.Core
 			await flushParitySem.WaitAsync();
 			try
 			{
-				if (force) throw new NotImplementedException("force flushParity not implemented");
+				if (force)
+				{
+					db.ForceParityProcessingState();
+				}
 
 				var d = db.GetProcessingParityRelations();
 				foreach (var key in d.Keys)

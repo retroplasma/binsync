@@ -137,6 +137,18 @@ namespace Binsync.Core.Caches
 			}
 		}
 
+		public void ForceParityProcessingState()
+		{
+			lock (con)
+			{
+				con.Execute(@"
+					update parityrelation
+					set state = ?
+					where state = ?
+				", SQLMap.ParityRelationState.Processing, SQLMap.ParityRelationState.FillingUp);
+			}
+		}
+
 		public void AddNewAssuranceAndTmpData(byte[] indexId, uint rep, byte[] plainHash, uint compressedSize, byte[] tmpBytesCompressed)
 		{
 			lock (con) // MAYBE: something better than lock? we get a savePoint error otherwise atm.
