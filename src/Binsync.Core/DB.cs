@@ -20,6 +20,7 @@ namespace Binsync.Core.Caches
 			con = new SQLiteConnection(Path.Combine(cachePath, "db.sqlite"));
 			con.CreateTable<SQLMap.Segment>();
 			con.CreateTable<SQLMap.ParityRelation>();
+			con.CreateTable<SQLMap.Command>();
 
 			this.cachePath = cachePath;
 		}
@@ -61,6 +62,36 @@ namespace Binsync.Core.Caches
 			public enum ParityRelationState
 			{
 				FillingUp, Processing, Done
+			}
+
+			public enum CommandMetaType
+			{
+				File, Folder
+			}
+
+			public class Command
+			{
+				[PrimaryKey, AutoIncrement]
+				public int Id { get; set; }
+				[Indexed]
+				public string Path { get; set; }
+				public CommandMetaType MetaType { get; set; }
+
+
+				/* proto */
+
+				public enum CMDV { ADD = 2 }
+				public enum TYPEV { FOLDER = 0, FILE = 1, BLOCK = 2 }
+
+				public CMDV CMD { get; set; }
+				public TYPEV TYPE { get; set; }
+
+				public string FolderOrigin_Name { get; set; } // file or folder name
+				public long FolderOrigin_FileSize { get; set; } // file or folder name
+
+				public byte[] FileOrigin_Hash { get; set; } // hash of block
+				public long FileOrigin_Start { get; set; } // position of block in file
+				public uint FileOrigin_Size { get; set; } // size of block
 			}
 		}
 
@@ -217,6 +248,16 @@ namespace Binsync.Core.Caches
 			lock (con)
 			{
 				return con.Query<SQLMap.Segment>("select * from segment where indexId = ? limit 1", indexId).FirstOrDefault();
+			}
+		}
+
+		public SQLMap.CommandMetaType? MetaTypeAtPathInTransientCache(string path)
+		{
+			lock (con)
+			{
+				var res = con.Query<SQLMap.Command>("select * from command where path = ? limit 1", path).FirstOrDefault();
+				if (res == null) return null;
+				return res.MetaType;
 			}
 		}
 

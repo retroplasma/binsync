@@ -297,11 +297,69 @@ namespace Binsync.Core
 			}
 		}
 
+		SemaphoreSlim metaSem = new SemaphoreSlim(1, 1);
+
 		async Task pushFileToMeta(List<MetaSegment.Command.FileOrigin> metaSegments, long fileSize, string remotePath)
 		{
-			// TODO: actual
-			Constants.Logger.Log("pushFileToMeta not implemented");
-			await Task.Delay(1000);
+			await metaSem.WaitAsync();
+			try
+			{
+				// validate and resolve remotePath
+				// MAYBE: move remotePath conversion out of here and replace here with validation after conversion
+				if (Path.DirectorySeparatorChar != '/' && Path.AltDirectorySeparatorChar != '/')
+					throw new NotImplementedException("remotePath separator must be '/'");
+				if (remotePath.Substring(0, 1) != "/") throw new ArgumentException("Invalid path. Must be absolute file path.");
+				remotePath = Path.GetFullPath(remotePath);
+				if (remotePath.Substring(0, 1) != "/" || !Path.IsPathRooted(remotePath) || Path.GetFileName(remotePath) == "")
+					throw new ArgumentException("Invalid path. Must be absolute file path.");
+
+				// convert to actual remote path
+				// split path into partial paths: root (empty), directories (without leading or trailing slash) and file name
+				var root = "";
+				var dirs = ((Func<string, string[]>)(path =>
+				 {
+					 var pp = Path.GetDirectoryName(path).Split(new char[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+					 if (pp.Length == 0) return pp;
+					 pp[0] = $"{pp[0]}";
+					 for (var i = 1; i < pp.Length; i++)
+						 pp[i] = $"{pp[i - 1]}/{pp[i]}";
+					 return pp;
+				 }))(remotePath);
+				var file = remotePath.Substring(1);
+				var all = new string[] { root }.Concat(dirs).Concat(new[] { file });
+
+				// check if we can push to meta at that remotePath.
+				// if we want deletion or modification later, we need to iterate over the index here and aggregate meta
+				foreach (var dir in dirs)
+				{
+					if (DB.SQLMap.CommandMetaType.File == db.MetaTypeAtPathInTransientCache(dir) ||
+						null != db.FindMatchingSegmentInAssurancesByIndexId(generator.GenerateMetaFileID(0, dir)))
+					{
+						throw new Exception($"Directory '{dir}' would overwrite file at the same path.");
+					}
+				}
+				var metaTypeFile = db.MetaTypeAtPathInTransientCache(file);
+				if (DB.SQLMap.CommandMetaType.Folder == metaTypeFile ||
+					null != db.FindMatchingSegmentInAssurancesByIndexId(generator.GenerateMetaFolderID(0, file)))
+				{
+					throw new Exception($"File '{file}' would overwrite folder at the same path.");
+				}
+				if (DB.SQLMap.CommandMetaType.File == metaTypeFile ||
+					null != db.FindMatchingSegmentInAssurancesByIndexId(generator.GenerateMetaFileID(0, file)))
+				{
+					throw new Exception($"File '{file}' would overwrite file at the same path.");
+				}
+
+				Constants.Logger.Log($"Pushing to meta: {remotePath}");
+
+				// TODO upload file meta
+				// TODO cache folder meta for flush. or implicitly if file meta is cached
+				Constants.Logger.Log("-- not implemented --");
+			}
+			finally
+			{
+				metaSem.Release();
+			}
 		}
 	}
 }
