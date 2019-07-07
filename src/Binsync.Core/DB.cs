@@ -303,5 +303,43 @@ namespace Binsync.Core.Caches
 			Directory.Delete(tmp, true);
 		}
 	}
+
+	public static class Extensions
+	{
+		public static DB.SQLMap.Command ToDBObject(this Formats.MetaSegment.Command c)
+		{
+			return new DB.SQLMap.Command
+			{
+				CMD = (DB.SQLMap.Command.CMDV)c.CMD,
+				TYPE = (DB.SQLMap.Command.TYPEV)c.TYPE,
+				MetaType = c.FOLDER_ORIGIN != null ? DB.SQLMap.CommandMetaType.Folder : DB.SQLMap.CommandMetaType.File,
+				FolderOrigin_Name = c.FOLDER_ORIGIN?.Name,
+				FolderOrigin_FileSize = c.FOLDER_ORIGIN?.FileSize ?? 0,
+				FileOrigin_Hash = c.FILE_ORIGIN?.Hash,
+				FileOrigin_Start = c.FILE_ORIGIN?.Start ?? 0,
+				FileOrigin_Size = c.FILE_ORIGIN?.Size ?? 0,
+			};
+		}
+
+		public static Formats.MetaSegment.Command ToProtoObject(this DB.SQLMap.Command c)
+		{
+			return new Formats.MetaSegment.Command
+			{
+				CMD = (Formats.MetaSegment.Command.CMDV)c.CMD,
+				TYPE = (Formats.MetaSegment.Command.TYPEV)c.TYPE,
+				FOLDER_ORIGIN = c.MetaType != DB.SQLMap.CommandMetaType.Folder ? null : new Formats.MetaSegment.Command.FolderOrigin
+				{
+					Name = c.FolderOrigin_Name,
+					FileSize = c.FolderOrigin_FileSize,
+				},
+				FILE_ORIGIN = c.MetaType != DB.SQLMap.CommandMetaType.File ? null : new Formats.MetaSegment.Command.FileOrigin
+				{
+					Hash = c.FileOrigin_Hash,
+					Size = c.FileOrigin_Size,
+					Start = c.FileOrigin_Start,
+				},
+			};
+		}
+	}
 }
 
