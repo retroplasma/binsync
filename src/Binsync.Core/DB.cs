@@ -34,8 +34,10 @@ namespace Binsync.Core.Caches
 				public bool IsNew { get; set; }
 
 				/* proto */
+				[Indexed]
 				public byte[] IndexID { get; set; }
 				public UInt32 Replication { get; set; }
+				[Indexed]
 				public byte[] PlainHash { get; set; }
 				public uint CompressedLength { get; set; }
 			}
@@ -55,6 +57,7 @@ namespace Binsync.Core.Caches
 				public long ElementID { get; set; }
 
 				/* proto */
+				[Indexed]
 				public byte[] PlainHash { get; set; }
 				public bool IsParityElement { get; set; }
 			}
@@ -207,7 +210,6 @@ namespace Binsync.Core.Caches
 						select coalesce(max(collectionId) + 1, 1) collectionId, 1 elementId from parityrelation
 						limit 1
 					", SQLMap.ParityRelationState.FillingUp).First();
-					Console.WriteLine($"pr {pr.CollectionID} {pr.ElementID}");
 
 #if USE_ALTERNATIE_RAW_CACHE
 					var dir = Path.Combine(cachePath, "tmpDataCompressed", pr.CollectionID.ToString());

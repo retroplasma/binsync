@@ -118,7 +118,6 @@ namespace Binsync.Core
 				{
 					var k = (long)key;
 					var v = d[k] as List<DB.SQLMap.ParityRelation>;
-					Console.WriteLine($"{k}: {v.Count}");
 
 					// create parities
 					var sw = System.Diagnostics.Stopwatch.StartNew();
