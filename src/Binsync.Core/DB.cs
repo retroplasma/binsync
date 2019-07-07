@@ -263,10 +263,18 @@ namespace Binsync.Core.Caches
 
 		public List<SQLMap.ParityRelation> GetParityRelationsForHash(byte[] hash)
 		{
+			var dir = Path.Combine(cachePath, "tmpDataCompressed");
 			lock (con)
 			{
 				// includes incomplete ones
-				return con.Query<SQLMap.ParityRelation>("select * from parityrelation where collectionId = (select collectionId from parityrelation where plainHash = ?)", hash);
+				var rels = con.Query<SQLMap.ParityRelation>("select * from parityrelation where collectionId = (select collectionId from parityrelation where plainHash = ?)", hash);
+				foreach (var e in rels)
+				{
+#if USE_ALTERNATIE_RAW_CACHE
+					e.TmpDataCompressed = File.ReadAllBytes(Path.Combine(dir, e.CollectionID.ToString(), e.ElementID.ToString()));
+#endif
+				}
+				return rels;
 			}
 		}
 
