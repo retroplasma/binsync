@@ -332,8 +332,12 @@ namespace Binsync.Core
 				var hash = seg.PlainHash;
 				var rels = db.GetParityRelationsForHash(hash);
 				var ours = rels.Select((r, i) => new { r, i }).Where(ri => ri.r.PlainHash.SequenceEqual(hash)).First();
+				if (ours.r.TmpDataCompressed != null) return ours.r.TmpDataCompressed.GetDecompressed();
 				var segs = rels.Select(r => db.FindMatchingSegmentInAssurancesByPlainHash(r.PlainHash)).ToArray();
-				var tasks = rels.Select((r, i) => DownloadChunk(segs[i].IndexID, parityAware: false));
+				var tasks = rels.Select(async (r, i) =>
+				{
+					return r.TmpDataCompressed?.GetDecompressed() ?? await DownloadChunk(segs[i].IndexID, parityAware: false);
+				});
 				var dl = await Task.WhenAll(tasks);
 				var parityInfo1 = dl.Select((d, i) => new { d, i }).Where(r => !rels[r.i].IsParityElement)
 					.Select(r => new Integrity.Parity.ParityInfo

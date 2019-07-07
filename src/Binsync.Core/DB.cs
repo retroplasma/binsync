@@ -263,7 +263,8 @@ namespace Binsync.Core.Caches
 		{
 			lock (con)
 			{
-				return con.Query<SQLMap.ParityRelation>("select * from parityrelation where collectionId = (select collectionId from parityrelation where state = ? and plainHash = ?)", SQLMap.ParityRelationState.Done, hash);
+				// includes incomplete ones
+				return con.Query<SQLMap.ParityRelation>("select * from parityrelation where collectionId = (select collectionId from parityrelation where plainHash = ?)", hash);
 			}
 		}
 
