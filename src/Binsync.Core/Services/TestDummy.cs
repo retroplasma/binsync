@@ -1,5 +1,5 @@
 //#define LAG
-#define DONT_REALLY_SAVE
+//#define DONT_REALLY_SAVE
 //#define THROTTLE_DOWN_SPEED
 
 using System;
@@ -70,6 +70,8 @@ namespace Binsync.Core.Services
 				throttleDownSpeed(new FileInfo(filePath).Length);
 #endif
 
+				if (!File.Exists(filePath))
+					return null;
 				return File.ReadAllBytes(filePath);
 			}
 
@@ -107,6 +109,7 @@ namespace Binsync.Core.Services
 		public byte[] GetSubject(string id)
 		{
 			var data = storageDummy.Retrieve(id);
+			if (data == null) return null;
 			StorageDummy.Format retrievedFormat;
 
 			using (MemoryStream ms = new MemoryStream(data))
@@ -120,6 +123,7 @@ namespace Binsync.Core.Services
 		public byte[] GetBody(string id)
 		{
 			var data = storageDummy.Retrieve(id);
+			if (data == null) return null;
 			StorageDummy.Format retrievedFormat;
 
 			using (MemoryStream ms = new MemoryStream(data))

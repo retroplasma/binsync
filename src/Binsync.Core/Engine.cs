@@ -98,6 +98,11 @@ namespace Binsync.Core
 
 		SemaphoreSlim flushParitySem = new SemaphoreSlim(1, 1);
 
+		public async Task ForceFlushParity()
+		{
+			await flushParity(force: true);
+		}
+
 		async Task flushParity(bool force)
 		{
 			await flushParitySem.WaitAsync();
@@ -172,7 +177,8 @@ namespace Binsync.Core
 				}
 				else
 				{
-					Constants.Logger.Log($"Upload ok with r = {r}");
+					Constants.Logger.Log("Upload ok for " + (isParity ? "par" : "dat") + $" with {indexId.ToHexString()} with r = {r}"
+					+ $"\n  -> {locator}");
 					if (isParity)
 					{
 						db.AddNewAssurance(indexId, (uint)r, hash, (uint)lengthForAssurance);
@@ -297,6 +303,74 @@ namespace Binsync.Core
 			}
 		}
 
+		public async Task<byte[]> DownloadChunk(byte[] indexId, bool parityAware = true)
+		{
+			var seg = db.FindMatchingSegmentInAssurancesByIndexId(indexId);
+			if (seg == null) throw new KeyNotFoundException($"segment at index '{indexId.ToHexString()}' not found");
+			var loc = generator.DeriveLocator(indexId, seg.Replication);
+			var data = await withServiceFromPool(serviceUsage.Down, async svc =>
+			{
+				var res = svc.GetBody(loc);
+				return await Task.FromResult(res);
+			});
+			byte[] decrypted = null;
+			try
+			{
+				if (data == null) throw new FileNotFoundException(@"data for segment with index '{indexId.ToHexString()}' not found");
+				try
+				{
+					decrypted = encryption.Decrypt(data, loc);
+				}
+				catch (Exception ex)
+				{
+					throw new InvalidDataException(@"data for segment with index '{indexId.ToHexString()}' is invalid", ex);
+				}
+			}
+			catch (Exception)
+			{
+				if (!parityAware) return null;
+				var hash = seg.PlainHash;
+				var rels = db.GetParityRelationsForHash(hash);
+				var ours = rels.Select((r, i) => new { r, i }).Where(ri => ri.r.PlainHash.SequenceEqual(hash)).First();
+				var segs = rels.Select(r => db.FindMatchingSegmentInAssurancesByPlainHash(r.PlainHash)).ToArray();
+				var tasks = rels.Select((r, i) => DownloadChunk(segs[i].IndexID, parityAware: false));
+				var dl = await Task.WhenAll(tasks);
+				var parityInfo1 = dl.Select((d, i) => new { d, i }).Where(r => !rels[r.i].IsParityElement)
+					.Select(r => new Integrity.Parity.ParityInfo
+					{
+						Data = r.d == null ? null : r.d.GetCompressed(),
+						Broken = r.d == null,
+						RealLength = segs[r.i].CompressedLength
+					}).ToArray();
+				var parityInfo2 = dl.Select((d, i) => new { d, i }).Where(r => rels[r.i].IsParityElement)
+					.Select(r => new Integrity.Parity.ParityInfo
+					{
+						Data = r.d == null ? null : r.d,
+						Broken = r.d == null,
+						RealLength = segs[r.i].CompressedLength
+					}).ToArray();
+				try
+				{
+					Constants.Logger.Log($"repairing {indexId.ToHexString()}");
+					Integrity.Parity.RepairWithParity(ref parityInfo1, ref parityInfo2);
+					var recovered = parityInfo1.Concat(parityInfo2).Select((p, i) => new { p, i })
+						.Where(pi => pi.i == ours.i).Select(pi => pi.p).First().Data;
+					if (!ours.r.IsParityElement && recovered != null)
+					{
+						recovered = recovered.GetDecompressed();
+					}
+					var valid = recovered != null && recovered.SHA256().SequenceEqual(hash);
+					if (!valid) throw new InvalidDataException(@"not enough parity for segment with index '{indexId.ToHexString()}'");
+					return recovered;
+				}
+				catch (Exception ex)
+				{
+					throw new NotEnoughParityException(@"not enough parity for segment with index '{indexId.ToHexString()}'", ex);
+				}
+			}
+			return decrypted.GetDecompressed();
+		}
+
 		SemaphoreSlim metaSem = new SemaphoreSlim(1, 1);
 
 		async Task pushFileToMeta(List<MetaSegment.Command.FileOrigin> metaSegments, long fileSize, string remotePath)
@@ -354,6 +428,7 @@ namespace Binsync.Core
 
 				// TODO upload file meta
 				// TODO cache folder meta for flush. or implicitly if file meta is cached
+				// MAYBE make dir meta accessible immediately so dir enumerator can access it before any flush
 				Constants.Logger.Log("-- not implemented --");
 			}
 			finally
@@ -361,5 +436,12 @@ namespace Binsync.Core
 				metaSem.Release();
 			}
 		}
+	}
+
+	public class NotEnoughParityException : Exception
+	{
+		public NotEnoughParityException() { }
+		public NotEnoughParityException(string message) : base(message) { }
+		public NotEnoughParityException(string message, Exception inner) : base(message, inner) { }
 	}
 }

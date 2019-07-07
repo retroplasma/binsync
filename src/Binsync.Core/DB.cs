@@ -87,7 +87,7 @@ namespace Binsync.Core.Caches
 				public TYPEV TYPE { get; set; }
 
 				public string FolderOrigin_Name { get; set; } // file or folder name
-				public long FolderOrigin_FileSize { get; set; } // file or folder name
+				public long FolderOrigin_FileSize { get; set; } // file size if file in folder
 
 				public byte[] FileOrigin_Hash { get; set; } // hash of block
 				public long FileOrigin_Start { get; set; } // position of block in file
@@ -248,6 +248,22 @@ namespace Binsync.Core.Caches
 			lock (con)
 			{
 				return con.Query<SQLMap.Segment>("select * from segment where indexId = ? limit 1", indexId).FirstOrDefault();
+			}
+		}
+
+		public SQLMap.Segment FindMatchingSegmentInAssurancesByPlainHash(byte[] plainHash)
+		{
+			lock (con)
+			{
+				return con.Query<SQLMap.Segment>("select * from segment where plainHash = ? limit 1", plainHash).FirstOrDefault();
+			}
+		}
+
+		public List<SQLMap.ParityRelation> GetParityRelationsForHash(byte[] hash)
+		{
+			lock (con)
+			{
+				return con.Query<SQLMap.ParityRelation>("select * from parityrelation where collectionId = (select collectionId from parityrelation where state = ? and plainHash = ?)", SQLMap.ParityRelationState.Done, hash);
 			}
 		}
 

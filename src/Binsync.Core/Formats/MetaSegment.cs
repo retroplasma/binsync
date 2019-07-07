@@ -89,7 +89,7 @@ namespace Binsync.Core.Formats
 				public string Name { get; set; } // file or folder name
 
 				[ProtoMember(2)]
-				public long FileSize { get; set; } // file or folder name
+				public long FileSize { get; set; } // file size if file in folder
 			}
 
 			[ProtoContract]
