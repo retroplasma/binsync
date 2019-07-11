@@ -76,8 +76,10 @@ namespace Binsync.Core.Caches
 			{
 				[PrimaryKey, AutoIncrement]
 				public int Id { get; set; }
+				public bool IsNew { get; set; }
 				[Indexed]
 				public string Path { get; set; }
+				public int Index { get; set; }
 				public CommandMetaType MetaType { get; set; }
 
 
@@ -285,6 +287,44 @@ namespace Binsync.Core.Caches
 				var res = con.Query<SQLMap.Command>("select * from command where path = ? limit 1", path).FirstOrDefault();
 				if (res == null) return null;
 				return res.MetaType;
+			}
+		}
+
+		public List<SQLMap.Command> CommandsInTransientCache(string path = null)
+		{
+			lock (con)
+			{
+				var commands = path == null
+					? con.Query<SQLMap.Command>("select * from command")
+					: con.Query<SQLMap.Command>("select * from command where path = ?", path);
+				commands = commands.Select(c =>
+				{
+					c.Index--;
+					return c;
+				}).ToList();
+				return commands;
+			}
+		}
+
+		public void CommandsFlushedForPath(string path, int indexSmallerThan)
+		{
+			indexSmallerThan++;
+			lock (con)
+			{
+				con.Execute("delete from command where path = ? and `index` < ?", path, indexSmallerThan);
+			}
+		}
+
+		public void AddCommandsToTransientCache(List<SQLMap.Command> commands)
+		{
+			commands = commands.Select(c =>
+			{
+				c.Index++;
+				return c;
+			}).ToList();
+			lock (con)
+			{
+				con.InsertAll(commands, runInTransaction: true);
 			}
 		}
 

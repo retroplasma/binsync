@@ -78,7 +78,15 @@ namespace Binsync.Core
 			}
 
 			await Task.WhenAll(tasks);
-			await pushFileToMeta(metaSegments, fileSize, remotePath);
+			try
+			{
+				await pushFileToMeta(metaSegments, fileSize, remotePath);
+			}
+			catch (MetaEntryOverwriteException ex)
+			{
+				Constants.Logger.Log("can't push to meta. reason: " + ex.Message);
+				//throw ex;
+			}
 		}
 
 		async Task uploadChunk(byte[] bytes, byte[] hash, byte[] indexId)
@@ -393,7 +401,7 @@ namespace Binsync.Core
 				// convert to actual remote path
 				// split path into partial paths: root (empty), directories (without leading or trailing slash) and file name
 				var root = "";
-				var dirs = ((Func<string, string[]>)(path =>
+				var candidateDirs = ((Func<string, string[]>)(path =>
 				 {
 					 var pp = Path.GetDirectoryName(path).Split(new char[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
 					 if (pp.Length == 0) return pp;
@@ -403,36 +411,160 @@ namespace Binsync.Core
 					 return pp;
 				 }))(remotePath);
 				var file = remotePath.Substring(1);
-				var all = new string[] { root }.Concat(dirs).Concat(new[] { file });
+				var allDirs = new string[] { root }.Concat(candidateDirs).ToArray();
+				var all = allDirs.Concat(new[] { file }).ToArray();
 
 				// check if we can push to meta at that remotePath.
 				// if we want deletion or modification later, we need to iterate over the index here and aggregate meta
-				foreach (var dir in dirs)
+				foreach (var dir in candidateDirs)
 				{
 					if (DB.SQLMap.CommandMetaType.File == db.MetaTypeAtPathInTransientCache(dir) ||
 						null != db.FindMatchingSegmentInAssurancesByIndexId(generator.GenerateMetaFileID(0, dir)))
 					{
-						throw new Exception($"Directory '{dir}' would overwrite file at the same path.");
+						throw new MetaEntryOverwriteException($"Directory '{dir}' would overwrite file at the same path.");
 					}
 				}
 				var metaTypeFile = db.MetaTypeAtPathInTransientCache(file);
 				if (DB.SQLMap.CommandMetaType.Folder == metaTypeFile ||
 					null != db.FindMatchingSegmentInAssurancesByIndexId(generator.GenerateMetaFolderID(0, file)))
 				{
-					throw new Exception($"File '{file}' would overwrite folder at the same path.");
+					throw new MetaEntryOverwriteException($"File '{file}' would overwrite folder at the same path.");
 				}
 				if (DB.SQLMap.CommandMetaType.File == metaTypeFile ||
 					null != db.FindMatchingSegmentInAssurancesByIndexId(generator.GenerateMetaFileID(0, file)))
 				{
-					throw new Exception($"File '{file}' would overwrite file at the same path.");
+					throw new MetaEntryOverwriteException($"File '{file}' would overwrite file at the same path.");
 				}
 
 				Constants.Logger.Log($"Pushing to meta: {remotePath}");
 
-				// TODO upload file meta
-				// TODO cache folder meta for flush. or implicitly if file meta is cached
-				// MAYBE make dir meta accessible immediately so dir enumerator can access it before any flush
-				Constants.Logger.Log("-- not implemented --");
+				var allDirsEx = allDirs.Select((d, i) => new { last = Path.GetFileName(d), full = d, i }).ToArray();
+
+				var pushList = new List<DB.SQLMap.Command>();
+				foreach (var dir in allDirsEx)
+				{
+					var commands = new List<DB.SQLMap.Command>();
+					var i = 0;
+					for (; ; i++)
+					{
+						var indexId = generator.GenerateMetaFolderID((uint)i, dir.full);
+						var seg = db.FindMatchingSegmentInAssurancesByIndexId(indexId);
+						if (seg == null)
+							break;
+						var chunk = await DownloadChunk(indexId); // TODO cache
+						commands.AddRange(MetaSegment.FromByteArray(chunk).Commands
+							.Select(c => c.ToDBObject())
+							.Select(c =>
+							{
+								c.IsNew = false;
+								c.Path = dir.full;
+								c.Index = i;
+								c.MetaType = DB.SQLMap.CommandMetaType.Folder;
+								return c;
+							})
+						);
+					}
+					var commands2 = db.CommandsInTransientCache(dir.full);
+					if (commands2.Where(c => c.Index < i).FirstOrDefault() != null)
+						throw new InvalidDataException($"too small index in meta db cache for dir '{dir}'");
+
+					i += commands2.Count;
+
+					var allCommands = commands.Concat(commands2).ToArray();
+
+					if (dir.i != allDirsEx.Length - 1)
+					{
+						var next = allDirsEx[dir.i + 1];
+						var hasFolder = null != allCommands.Where(c => c.MetaType == DB.SQLMap.CommandMetaType.Folder && c.FolderOrigin_Name == next.last).FirstOrDefault();
+						if (hasFolder)
+							continue;
+
+						// add folder to folder
+						pushList.Add(new DB.SQLMap.Command
+						{
+							IsNew = true,
+							Path = dir.full,
+							Index = i,
+							MetaType = DB.SQLMap.CommandMetaType.Folder,
+							CMD = DB.SQLMap.Command.CMDV.ADD,
+							TYPE = DB.SQLMap.Command.TYPEV.FOLDER,
+							FolderOrigin_Name = next.last,
+						});
+					}
+					else
+					{
+						var fileName = Path.GetFileName(file);
+						var hasFile = null != allCommands.Where(c => c.MetaType == DB.SQLMap.CommandMetaType.Folder && c.FolderOrigin_Name == fileName).FirstOrDefault();
+						if (hasFile)
+							throw new MetaEntryOverwriteException($"File '{file}' would overwrite file in parent folder.");
+
+						// add file to folder
+						pushList.Add(new DB.SQLMap.Command
+						{
+							IsNew = true,
+							Path = dir.full,
+							Index = i,
+							MetaType = DB.SQLMap.CommandMetaType.Folder,
+							CMD = DB.SQLMap.Command.CMDV.ADD,
+							TYPE = DB.SQLMap.Command.TYPEV.FILE,
+							FolderOrigin_Name = fileName,
+							FolderOrigin_FileSize = fileSize,
+						});
+					}
+				}
+
+				// add blocks to file
+				pushList.AddRange(metaSegments.Select((ms, i) => new DB.SQLMap.Command
+				{
+					IsNew = true,
+					Path = file,
+					Index = i,
+					MetaType = DB.SQLMap.CommandMetaType.File,
+					CMD = DB.SQLMap.Command.CMDV.ADD,
+					TYPE = DB.SQLMap.Command.TYPEV.BLOCK,
+					FileOrigin_Hash = ms.Hash,
+					FileOrigin_Size = ms.Size,
+					FileOrigin_Start = ms.Start,
+				}));
+
+				db.AddCommandsToTransientCache(pushList);
+			}
+			finally
+			{
+				metaSem.Release();
+			}
+		}
+
+		public async Task FlushMeta()
+		{
+			await metaSem.WaitAsync();
+			try
+			{
+				var cmds = db.CommandsInTransientCache();
+				var groupedCmds = cmds.OrderBy(c => c.Index).GroupBy(c => c.Path);
+				foreach (var group in groupedCmds)
+				{
+					var g = group.ToList();
+					var path = group.Key;
+					var seg = new Formats.MetaSegment { Commands = g.Select(e => e.ToProtoObject()).ToList() };
+					var protoSegs = seg.ToListOfByteArrays();
+
+					var isFile = seg.Commands[0].ToDBObject().MetaType == DB.SQLMap.CommandMetaType.File;
+					var sum = g[0].Index;
+					foreach (var psi in protoSegs.Select((ps, i) => new { ps, i }))
+					{
+						sum += Formats.MetaSegment.FromByteArray(psi.ps).Commands.Count;
+
+						var indexId = isFile
+							? generator.GenerateMetaFileID((uint)psi.i, path)
+							: generator.GenerateMetaFolderID((uint)psi.i, path);
+
+						await uploadChunk(psi.ps, psi.ps.SHA256(), indexId);
+
+						db.CommandsFlushedForPath(path, indexSmallerThan: sum);
+						// TODO: cache uploaded chunk					
+					}
+				}
 			}
 			finally
 			{
@@ -446,5 +578,12 @@ namespace Binsync.Core
 		public NotEnoughParityException() { }
 		public NotEnoughParityException(string message) : base(message) { }
 		public NotEnoughParityException(string message, Exception inner) : base(message, inner) { }
+	}
+
+	public class MetaEntryOverwriteException : Exception
+	{
+		public MetaEntryOverwriteException() { }
+		public MetaEntryOverwriteException(string message) : base(message) { }
+		public MetaEntryOverwriteException(string message, Exception inner) : base(message, inner) { }
 	}
 }
