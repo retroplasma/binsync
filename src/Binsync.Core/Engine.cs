@@ -55,6 +55,9 @@ namespace Binsync.Core
 			//assuranceContainer.RefillMainAssuranceNOTTHREADSAFE();
 		}
 
+		// TODO: assurance flush
+		// TODO: meta download
+
 		public async Task UploadFile(string localPath, string remotePath)
 		{
 			// TODO: check path format validity
@@ -93,14 +96,8 @@ namespace Binsync.Core
 		{
 			await deduplicate(indexId, async () =>
 			{
-				// flush parity if needed
 				await flushParity(force: false);
-
-				// upload
 				await _uploadChunk(bytes, hash, indexId);
-
-				// cache data for parity creation
-				var hexHash = hash.ToHexString();
 			});
 		}
 
@@ -310,6 +307,7 @@ namespace Binsync.Core
 			}
 		}
 
+		// TODO: dedup
 		public async Task<byte[]> DownloadChunk(byte[] indexId, bool parityAware = true)
 		{
 			var seg = db.FindMatchingSegmentInAssurancesByIndexId(indexId);
