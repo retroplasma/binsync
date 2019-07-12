@@ -244,6 +244,65 @@ namespace Binsync.Core
 			}
 		}
 
+		class dedupContainerD { public byte[] Result = null; public Exception Exception = null; public List<SemaphoreSlim> Semaphores = new List<SemaphoreSlim>(); }
+		SemaphoreSlim dedupSemD = new SemaphoreSlim(1, 1);
+		Dictionary<string, dedupContainerD> dedupLiveD = new Dictionary<string, dedupContainerD>();
+		async Task<byte[]> deduplicateD(byte[] indexId, Func<Task<byte[]>> fn)
+		{
+			var indexIdStr = indexId.ToHexString();
+			SemaphoreSlim s = null;
+			dedupContainerD d = null;
+			await dedupSemD.WaitAsync();
+			try
+			{
+				if (dedupLiveD.ContainsKey(indexIdStr))
+				{
+					// live dedup
+					(d = dedupLiveD[indexIdStr]).Semaphores.Add(s = new SemaphoreSlim(0, 1));
+				}
+				else
+				{
+					dedupLiveD.Add(indexIdStr, new dedupContainerD());
+				}
+			}
+			finally { dedupSemD.Release(); }
+
+			if (s != null)
+			{
+				await s.WaitAsync();
+				if (d.Exception != null) throw d.Exception;
+				return d.Result;
+			}
+
+			byte[] res = null;
+			Exception ex = null;
+			try
+			{
+				res = await fn();
+				return res;
+			}
+			catch (Exception _ex)
+			{
+				ex = _ex;
+				throw ex;
+			}
+			finally
+			{
+				await dedupSemD.WaitAsync();
+				try
+				{
+					dedupLiveD[indexIdStr].Result = res;
+					dedupLiveD[indexIdStr].Exception = ex;
+					foreach (var sem in dedupLiveD[indexIdStr].Semaphores)
+					{
+						sem.Release();
+					}
+					dedupLiveD.Remove(indexIdStr);
+				}
+				finally { dedupSemD.Release(); }
+			}
+		}
+
 		class dedupContainer { public Exception Exception = null; public List<SemaphoreSlim> Semaphores = new List<SemaphoreSlim>(); }
 		SemaphoreSlim dedupSem = new SemaphoreSlim(1, 1);
 		Dictionary<string, dedupContainer> dedupLive = new Dictionary<string, dedupContainer>();
@@ -307,8 +366,15 @@ namespace Binsync.Core
 			}
 		}
 
-		// TODO: dedup
 		public async Task<byte[]> DownloadChunk(byte[] indexId, bool parityAware = true)
+		{
+			return await deduplicateD(indexId, async () =>
+			{
+				return await _downloadChunk(indexId, parityAware);
+			});
+		}
+
+		public async Task<byte[]> _downloadChunk(byte[] indexId, bool parityAware = true)
 		{
 			var seg = db.FindMatchingSegmentInAssurancesByIndexId(indexId);
 			if (seg == null) throw new KeyNotFoundException($"segment at index '{indexId.ToHexString()}' not found");
