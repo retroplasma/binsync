@@ -58,7 +58,6 @@ namespace Binsync.Core
 		}
 
 		// TODO: assurance flush
-		// TODO: meta download
 
 		public async Task UploadFile(string localPath, string remotePath)
 		{
@@ -329,6 +328,59 @@ namespace Binsync.Core
 		}
 
 		SemaphoreSlim metaSem = new SemaphoreSlim(1, 1);
+
+		public class Meta : Formats.MetaSegment
+		{
+			public string Path;
+			public bool IsFile;
+		}
+
+		public async Task<Meta> DownloadMetaForPath(string path)
+		{
+			int maxConcurrentTasks = 10;
+			uint metaIndex = 0;
+			var tasks = new List<Task<byte[]>>();
+
+			var isFile = null != db.FindMatchingSegmentInAssurancesByIndexId(generator.GenerateMetaFileID(0, path));
+			if (!isFile)
+			{
+				var isFolder = null != db.FindMatchingSegmentInAssurancesByIndexId(generator.GenerateMetaFolderID(0, path));
+				if (!isFolder)
+					return null;
+			}
+
+			for (; ; metaIndex++)
+			{
+				var indexId = isFile
+					? generator.GenerateMetaFileID(metaIndex, path)
+					: generator.GenerateMetaFolderID(metaIndex, path);
+				var seg = db.FindMatchingSegmentInAssurancesByIndexId(indexId);
+				if (seg == null)
+					break;
+
+				var task = DownloadChunk(indexId);
+				tasks.Add(task);
+
+				if (tasks.Count == maxConcurrentTasks)
+				{
+					var t = await Task.WhenAny(tasks);
+					if (t.IsFaulted) throw t.Exception; // catch earlier by capping maxConcurrentTasks to connection limit?
+				}
+			}
+
+			var combinedMeta = new Meta { Path = path, IsFile = isFile };
+
+			var values = await Task.WhenAll(tasks);
+			foreach (var cmds1 in values.Select(v => MetaSegment.FromByteArray(v).Commands))
+			{
+				combinedMeta.Commands.AddRange(cmds1);
+			}
+
+			var cmds2 = db.CommandsInTransientCache(path).OrderBy(c => c.Index).Select(x => x.ToProtoObject());
+			combinedMeta.Commands.AddRange(cmds2);
+
+			return combinedMeta;
+		}
 
 		async Task pushFileToMeta(List<MetaSegment.Command.FileOrigin> metaSegments, long fileSize, string remotePath)
 		{
