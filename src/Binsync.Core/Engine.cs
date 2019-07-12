@@ -456,7 +456,6 @@ namespace Binsync.Core
 							{
 								c.IsNew = false;
 								c.Path = dir.full;
-								c.Index = i;
 								c.MetaType = DB.SQLMap.CommandMetaType.Folder;
 								return c;
 							})
@@ -549,13 +548,25 @@ namespace Binsync.Core
 
 					var isFile = seg.Commands[0].ToDBObject().MetaType == DB.SQLMap.CommandMetaType.File;
 					var sum = g[0].Index;
+
+					var nextIndex = 0;
+					for (; ; nextIndex++)
+					{
+						var indexId = isFile
+							? generator.GenerateMetaFileID((uint)nextIndex, path)
+							: generator.GenerateMetaFolderID((uint)nextIndex, path);
+						var exists = null != db.FindMatchingSegmentInAssurancesByIndexId(indexId);
+						if (!exists) break;
+					}
+
 					foreach (var psi in protoSegs.Select((ps, i) => new { ps, i }))
 					{
 						sum += Formats.MetaSegment.FromByteArray(psi.ps).Commands.Count;
 
+						var idx = nextIndex + psi.i;
 						var indexId = isFile
-							? generator.GenerateMetaFileID((uint)psi.i, path)
-							: generator.GenerateMetaFolderID((uint)psi.i, path);
+							? generator.GenerateMetaFileID((uint)idx, path)
+							: generator.GenerateMetaFolderID((uint)idx, path);
 
 						await uploadChunk(psi.ps, psi.ps.SHA256(), indexId);
 
