@@ -21,6 +21,8 @@ namespace Binsync.Core
 		int totalConnections; // download + upload
 		int uploadConnections;
 		DB db;
+		DedupContext<byte[]> dedupCtxD = new DedupContext<byte[]>();
+		DedupContext dedupCtxU = new DedupContext();
 
 		public static Engine CreateDummy(string storageCode, string password, int totalConnections, int uploadConnections)
 		{
@@ -94,7 +96,7 @@ namespace Binsync.Core
 
 		async Task uploadChunk(byte[] bytes, byte[] hash, byte[] indexId)
 		{
-			await deduplicateU(indexId, async () =>
+			await dedupCtxU.Deduplicate(indexId, async () =>
 			{
 				await flushParity(force: false);
 				await _uploadChunk(bytes, hash, indexId);
@@ -140,7 +142,7 @@ namespace Binsync.Core
 						parityHashes[i] = hash;
 						var indexId = this.generator.GenerateRawOrParityID(hash);
 
-						await deduplicateU(indexId, async () =>
+						await dedupCtxU.Deduplicate(indexId, async () =>
 						{
 							await _uploadChunk(bytes, hash, indexId, isParity: true);
 						});
@@ -160,6 +162,8 @@ namespace Binsync.Core
 
 		async Task _uploadChunk(byte[] bytes, byte[] hash, byte[] indexId, bool isParity = false)
 		{
+			if (null != db.FindMatchingSegmentInAssurancesByIndexId(indexId))
+				return;
 			for (var r = 0; r < Constants.ReplicationAttemptCount; r++)
 			{
 				var locator = this.generator.DeriveLocator(indexId, (uint)r);
@@ -244,137 +248,15 @@ namespace Binsync.Core
 			}
 		}
 
-		class dedupContainerD { public byte[] Result = null; public Exception Exception = null; public List<SemaphoreSlim> Semaphores = new List<SemaphoreSlim>(); }
-		SemaphoreSlim dedupSemD = new SemaphoreSlim(1, 1);
-		Dictionary<string, dedupContainerD> dedupLiveD = new Dictionary<string, dedupContainerD>();
-		async Task<byte[]> deduplicateD(byte[] indexId, Func<Task<byte[]>> fn)
-		{
-			var indexIdStr = indexId.ToHexString();
-			SemaphoreSlim s = null;
-			dedupContainerD d = null;
-			await dedupSemD.WaitAsync();
-			try
-			{
-				if (dedupLiveD.ContainsKey(indexIdStr))
-				{
-					// live dedup
-					(d = dedupLiveD[indexIdStr]).Semaphores.Add(s = new SemaphoreSlim(0, 1));
-				}
-				else
-				{
-					dedupLiveD.Add(indexIdStr, new dedupContainerD());
-				}
-			}
-			finally { dedupSemD.Release(); }
-
-			if (s != null)
-			{
-				await s.WaitAsync();
-				if (d.Exception != null) throw d.Exception;
-				return d.Result;
-			}
-
-			byte[] res = null;
-			Exception ex = null;
-			try
-			{
-				res = await fn();
-				return res;
-			}
-			catch (Exception _ex)
-			{
-				ex = _ex;
-				throw ex;
-			}
-			finally
-			{
-				await dedupSemD.WaitAsync();
-				try
-				{
-					dedupLiveD[indexIdStr].Result = res;
-					dedupLiveD[indexIdStr].Exception = ex;
-					foreach (var sem in dedupLiveD[indexIdStr].Semaphores)
-					{
-						sem.Release();
-					}
-					dedupLiveD.Remove(indexIdStr);
-				}
-				finally { dedupSemD.Release(); }
-			}
-		}
-
-		class dedupContainerU { public Exception Exception = null; public List<SemaphoreSlim> Semaphores = new List<SemaphoreSlim>(); }
-		SemaphoreSlim dedupSemU = new SemaphoreSlim(1, 1);
-		Dictionary<string, dedupContainerU> dedupLiveU = new Dictionary<string, dedupContainerU>();
-		async Task deduplicateU(byte[] indexId, Func<Task> fn)
-		{
-			var indexIdStr = indexId.ToHexString();
-			SemaphoreSlim s = null;
-			dedupContainerU d = null;
-			await dedupSemU.WaitAsync();
-			try
-			{
-				if (dedupLiveU.ContainsKey(indexIdStr))
-				{
-					// live dedup
-					(d = dedupLiveU[indexIdStr]).Semaphores.Add(s = new SemaphoreSlim(0, 1));
-				}
-				else
-				{
-					if (null != db.FindMatchingSegmentInAssurancesByIndexId(indexId))
-					{
-						return;
-					}
-					dedupLiveU.Add(indexIdStr, new dedupContainerU());
-				}
-			}
-			finally { dedupSemU.Release(); }
-
-			if (s != null)
-			{
-				await s.WaitAsync();
-				if (d.Exception != null) throw d.Exception;
-				return;
-			}
-
-			Exception ex = null;
-			try
-			{
-				await fn();
-			}
-			catch (Exception _ex)
-			{
-				ex = _ex;
-			}
-			finally
-			{
-				await dedupSemU.WaitAsync();
-				try
-				{
-					dedupLiveU[indexIdStr].Exception = ex;
-					foreach (var sem in dedupLiveU[indexIdStr].Semaphores)
-					{
-						sem.Release();
-					}
-					dedupLiveU.Remove(indexIdStr);
-				}
-				finally { dedupSemU.Release(); }
-				if (ex != null)
-				{
-					throw ex;
-				}
-			}
-		}
-
 		public async Task<byte[]> DownloadChunk(byte[] indexId, bool parityAware = true)
 		{
-			return await deduplicateD(indexId, async () =>
+			return await dedupCtxD.Deduplicate(indexId, async () =>
 			{
 				return await _downloadChunk(indexId, parityAware);
 			});
 		}
 
-		public async Task<byte[]> _downloadChunk(byte[] indexId, bool parityAware = true)
+		async Task<byte[]> _downloadChunk(byte[] indexId, bool parityAware = true)
 		{
 			var seg = db.FindMatchingSegmentInAssurancesByIndexId(indexId);
 			if (seg == null) throw new KeyNotFoundException($"segment at index '{indexId.ToHexString()}' not found");
@@ -644,6 +526,85 @@ namespace Binsync.Core
 			finally
 			{
 				metaSem.Release();
+			}
+		}
+
+		class DedupContext : DedupContext<int>
+		{
+			public async Task Deduplicate(byte[] indexId, Func<Task> fn)
+			{
+				await base.Deduplicate(indexId, async () =>
+				{
+					await fn();
+					return 1;
+				});
+			}
+
+			new public Task<int> Deduplicate(byte[] indexId, Func<Task<int>> fn)
+			{
+				throw new UnauthorizedAccessException("Use DedupContext<T> for generic access");
+			}
+		}
+
+		class DedupContext<T>
+		{
+			class dedupContainer { public T Result; public Exception Exception = null; public List<SemaphoreSlim> Semaphores = new List<SemaphoreSlim>(); }
+			SemaphoreSlim dedupSem = new SemaphoreSlim(1, 1);
+			Dictionary<string, dedupContainer> dedupLive = new Dictionary<string, dedupContainer>();
+			public async Task<T> Deduplicate(byte[] indexId, Func<Task<T>> fn)
+			{
+				var indexIdStr = indexId.ToHexString();
+				SemaphoreSlim s = null;
+				dedupContainer d = null;
+				await dedupSem.WaitAsync();
+				try
+				{
+					if (dedupLive.ContainsKey(indexIdStr))
+					{
+						// live dedup
+						(d = dedupLive[indexIdStr]).Semaphores.Add(s = new SemaphoreSlim(0, 1));
+					}
+					else
+					{
+						dedupLive.Add(indexIdStr, new dedupContainer());
+					}
+				}
+				finally { dedupSem.Release(); }
+
+				if (s != null)
+				{
+					await s.WaitAsync();
+					if (d.Exception != null) throw d.Exception;
+					return d.Result;
+				}
+
+				T res = default(T);
+				Exception ex = null;
+				try
+				{
+					res = await fn();
+					return res;
+				}
+				catch (Exception _ex)
+				{
+					ex = _ex;
+					throw ex;
+				}
+				finally
+				{
+					await dedupSem.WaitAsync();
+					try
+					{
+						dedupLive[indexIdStr].Result = res;
+						dedupLive[indexIdStr].Exception = ex;
+						foreach (var sem in dedupLive[indexIdStr].Semaphores)
+						{
+							sem.Release();
+						}
+						dedupLive.Remove(indexIdStr);
+					}
+					finally { dedupSem.Release(); }
+				}
 			}
 		}
 	}
