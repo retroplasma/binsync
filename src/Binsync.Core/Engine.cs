@@ -94,12 +94,12 @@ namespace Binsync.Core
 			}
 		}
 
-		async Task uploadChunk(byte[] bytes, byte[] hash, byte[] indexId)
+		async Task uploadChunk(byte[] bytes, byte[] hash, byte[] indexId, Action _inAssuranceAdditionTransaction = null)
 		{
 			await dedupCtxU.Deduplicate(indexId, async () =>
 			{
 				await flushParity(force: false);
-				await _uploadChunk(bytes, hash, indexId);
+				await _uploadChunk(bytes, hash, indexId, false, _inAssuranceAdditionTransaction);
 			});
 		}
 
@@ -160,7 +160,7 @@ namespace Binsync.Core
 		}
 
 
-		async Task _uploadChunk(byte[] bytes, byte[] hash, byte[] indexId, bool isParity = false)
+		async Task _uploadChunk(byte[] bytes, byte[] hash, byte[] indexId, bool isParity = false, Action _inAssuranceAdditionTransaction = null)
 		{
 			if (null != db.FindMatchingSegmentInAssurancesByIndexId(indexId))
 				return;
@@ -189,11 +189,11 @@ namespace Binsync.Core
 					+ $"\n  -> {locator}");
 					if (isParity)
 					{
-						db.AddNewAssurance(indexId, (uint)r, hash, (uint)lengthForAssurance);
+						db.AddNewAssurance(indexId, (uint)r, hash, (uint)lengthForAssurance, _inAssuranceAdditionTransaction);
 					}
 					else
 					{
-						db.AddNewAssuranceAndTmpData(indexId, (uint)r, hash, (uint)lengthForAssurance, compressed);
+						db.AddNewAssuranceAndTmpData(indexId, (uint)r, hash, (uint)lengthForAssurance, compressed, _inAssuranceAdditionTransaction);
 					}
 					return;
 				}
@@ -516,9 +516,11 @@ namespace Binsync.Core
 							? generator.GenerateMetaFileID((uint)idx, path)
 							: generator.GenerateMetaFolderID((uint)idx, path);
 
-						await uploadChunk(psi.ps, psi.ps.SHA256(), indexId);
+						await uploadChunk(psi.ps, psi.ps.SHA256(), indexId, _inAssuranceAdditionTransaction: () =>
+						{
+							db.CommandsFlushedForPath(path, indexSmallerThan: sum, _isAlreadyInTransaction: true);
+						});
 
-						db.CommandsFlushedForPath(path, indexSmallerThan: sum);
 						// TODO: cache uploaded chunk					
 					}
 				}

@@ -100,7 +100,7 @@ namespace Binsync.Core.Caches
 			}
 		}
 
-		public void AddNewAssurance(byte[] indexId, uint rep, byte[] plainHash, uint compressedSize)
+		public void AddNewAssurance(byte[] indexId, uint rep, byte[] plainHash, uint compressedSize, Action _additionalActionForTransaction = null)
 		{
 			var segment = new SQLMap.Segment
 			{
@@ -112,7 +112,18 @@ namespace Binsync.Core.Caches
 			};
 			lock (con)
 			{
-				con.Insert(segment);
+				if (_additionalActionForTransaction == null)
+				{
+					con.Insert(segment);
+				}
+				else
+				{
+					con.RunInTransaction(() =>
+					{
+						con.Insert(segment);
+						_additionalActionForTransaction();
+					});
+				}
 			}
 		}
 
@@ -185,7 +196,7 @@ namespace Binsync.Core.Caches
 			}
 		}
 
-		public void AddNewAssuranceAndTmpData(byte[] indexId, uint rep, byte[] plainHash, uint compressedSize, byte[] tmpBytesCompressed)
+		public void AddNewAssuranceAndTmpData(byte[] indexId, uint rep, byte[] plainHash, uint compressedSize, byte[] tmpBytesCompressed, Action _additionalActionForTransaction = null)
 		{
 			lock (con) // MAYBE: something better than lock? we get a savePoint error otherwise atm.
 			{
@@ -243,6 +254,8 @@ namespace Binsync.Core.Caches
 						) >= ?
 					", SQLMap.ParityRelationState.Processing, SQLMap.ParityRelationState.FillingUp, Constants.DataBeforeParity);
 
+					if (_additionalActionForTransaction != null)
+						_additionalActionForTransaction();
 				});
 			}
 		}
@@ -306,12 +319,18 @@ namespace Binsync.Core.Caches
 			}
 		}
 
-		public void CommandsFlushedForPath(string path, int indexSmallerThan)
+		public void CommandsFlushedForPath(string path, int indexSmallerThan, bool _isAlreadyInTransaction = false)
 		{
 			indexSmallerThan++;
-			lock (con)
+			Action action = () => con.Execute("delete from command where path = ? and `index` < ?", path, indexSmallerThan);
+
+			if (_isAlreadyInTransaction)
 			{
-				con.Execute("delete from command where path = ? and `index` < ?", path, indexSmallerThan);
+				action();
+			}
+			else
+			{
+				lock (con) action();
 			}
 		}
 
