@@ -15,7 +15,8 @@ namespace Binsync.Core
 		//public const int ArticlesBeforeMeta = 20;
 		//public static int MaxConnections = 16;
 		//public const int ReplicationSearchBounds = 10;
-		public const int ReplicationCount = 20;
+		public const int AssuranceReplicationCount = 20;
+		public const int ReplicationAttemptCount = 20;
 
 		public static readonly Logger Logger = new Logger(Console.WriteLine);
 

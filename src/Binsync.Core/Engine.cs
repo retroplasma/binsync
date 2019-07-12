@@ -160,7 +160,7 @@ namespace Binsync.Core
 
 		async Task _uploadChunk(byte[] bytes, byte[] hash, byte[] indexId, bool isParity = false)
 		{
-			for (var r = 0; r < Constants.ReplicationCount; r++)
+			for (var r = 0; r < Constants.ReplicationAttemptCount; r++)
 			{
 				var locator = this.generator.DeriveLocator(indexId, (uint)r);
 				var compressed = bytes.GetCompressed();
