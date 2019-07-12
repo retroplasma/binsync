@@ -94,7 +94,7 @@ namespace Binsync.Core
 
 		async Task uploadChunk(byte[] bytes, byte[] hash, byte[] indexId)
 		{
-			await deduplicate(indexId, async () =>
+			await deduplicateU(indexId, async () =>
 			{
 				await flushParity(force: false);
 				await _uploadChunk(bytes, hash, indexId);
@@ -140,7 +140,7 @@ namespace Binsync.Core
 						parityHashes[i] = hash;
 						var indexId = this.generator.GenerateRawOrParityID(hash);
 
-						await deduplicate(indexId, async () =>
+						await deduplicateU(indexId, async () =>
 						{
 							await _uploadChunk(bytes, hash, indexId, isParity: true);
 						});
@@ -303,21 +303,21 @@ namespace Binsync.Core
 			}
 		}
 
-		class dedupContainer { public Exception Exception = null; public List<SemaphoreSlim> Semaphores = new List<SemaphoreSlim>(); }
-		SemaphoreSlim dedupSem = new SemaphoreSlim(1, 1);
-		Dictionary<string, dedupContainer> dedupLive = new Dictionary<string, dedupContainer>();
-		async Task deduplicate(byte[] indexId, Func<Task> fn)
+		class dedupContainerU { public Exception Exception = null; public List<SemaphoreSlim> Semaphores = new List<SemaphoreSlim>(); }
+		SemaphoreSlim dedupSemU = new SemaphoreSlim(1, 1);
+		Dictionary<string, dedupContainerU> dedupLiveU = new Dictionary<string, dedupContainerU>();
+		async Task deduplicateU(byte[] indexId, Func<Task> fn)
 		{
 			var indexIdStr = indexId.ToHexString();
 			SemaphoreSlim s = null;
-			dedupContainer d = null;
-			await dedupSem.WaitAsync();
+			dedupContainerU d = null;
+			await dedupSemU.WaitAsync();
 			try
 			{
-				if (dedupLive.ContainsKey(indexIdStr))
+				if (dedupLiveU.ContainsKey(indexIdStr))
 				{
 					// live dedup
-					(d = dedupLive[indexIdStr]).Semaphores.Add(s = new SemaphoreSlim(0, 1));
+					(d = dedupLiveU[indexIdStr]).Semaphores.Add(s = new SemaphoreSlim(0, 1));
 				}
 				else
 				{
@@ -325,10 +325,10 @@ namespace Binsync.Core
 					{
 						return;
 					}
-					dedupLive.Add(indexIdStr, new dedupContainer());
+					dedupLiveU.Add(indexIdStr, new dedupContainerU());
 				}
 			}
-			finally { dedupSem.Release(); }
+			finally { dedupSemU.Release(); }
 
 			if (s != null)
 			{
@@ -348,17 +348,17 @@ namespace Binsync.Core
 			}
 			finally
 			{
-				await dedupSem.WaitAsync();
+				await dedupSemU.WaitAsync();
 				try
 				{
-					dedupLive[indexIdStr].Exception = ex;
-					foreach (var sem in dedupLive[indexIdStr].Semaphores)
+					dedupLiveU[indexIdStr].Exception = ex;
+					foreach (var sem in dedupLiveU[indexIdStr].Semaphores)
 					{
 						sem.Release();
 					}
-					dedupLive.Remove(indexIdStr);
+					dedupLiveU.Remove(indexIdStr);
 				}
-				finally { dedupSem.Release(); }
+				finally { dedupSemU.Release(); }
 				if (ex != null)
 				{
 					throw ex;
