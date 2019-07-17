@@ -132,6 +132,8 @@ namespace Binsync.Core
 					var parities = Integrity.Parity.CreateParity(input, Constants.ParityCount);
 					Constants.Logger.Log("parity created in {0}s", sw.ElapsedMilliseconds / 1000.0);
 
+					// MAYBE: add concurrency cap
+					var tasks = new List<Task>();
 					// upload parities
 					byte[][] parityHashes = new byte[parities.Length][];
 					for (int i = 0; i < parities.Length; i++)
@@ -141,11 +143,13 @@ namespace Binsync.Core
 						parityHashes[i] = hash;
 						var indexId = this.generator.GenerateRawOrParityID(hash);
 
-						await dedupCtxU.Deduplicate(indexId, async () =>
+						var task = dedupCtxU.Deduplicate(indexId, async () =>
 						{
 							await _uploadChunk(bytes, hash, indexId, isParity: true);
 						});
+						tasks.Add(task);
 					}
+					await Task.WhenAll(tasks);
 
 					// clear
 					db.CloseParityRelations(k, input.Length, parityHashes);
