@@ -82,7 +82,7 @@ namespace NntpClientLib
 				m_network = new SslStream(m_connection.GetStream(), false);
 				//m_network = new Mono.Security.Protocol.Tls.SslClientStream(m_connection.GetStream(), authdomain, true);
 				//#endif
-				//((SslStream)m_network).AuthenticateAsClient (authdomain);
+				((SslStream)m_network).AuthenticateAsClient (authdomain);
             }
             m_writer = new StreamWriter(m_network, DefaultTextEncoding);
             m_writer.AutoFlush = true;
