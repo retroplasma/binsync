@@ -340,10 +340,15 @@ namespace Binsync.Core
 			uint metaIndex = 0;
 			var tasks = new List<Task<byte[]>>();
 
-			var isFile = null != db.FindMatchingSegmentInAssurancesByIndexId(generator.GenerateMetaFileID(0, path));
+			var cmdsInTransientCache = db.CommandsInTransientCache(path);
+			var first = cmdsInTransientCache.FirstOrDefault();
+
+			var isFile = first?.MetaType == DB.SQLMap.CommandMetaType.File
+				|| null != db.FindMatchingSegmentInAssurancesByIndexId(generator.GenerateMetaFileID(0, path));
 			if (!isFile)
 			{
-				var isFolder = null != db.FindMatchingSegmentInAssurancesByIndexId(generator.GenerateMetaFolderID(0, path));
+				var isFolder = first?.MetaType == DB.SQLMap.CommandMetaType.Folder
+					|| null != db.FindMatchingSegmentInAssurancesByIndexId(generator.GenerateMetaFolderID(0, path));
 				if (!isFolder)
 					return null;
 			}
@@ -375,7 +380,7 @@ namespace Binsync.Core
 				combinedMeta.Commands.AddRange(cmds1);
 			}
 
-			var cmds2 = db.CommandsInTransientCache(path).OrderBy(c => c.Index).Select(x => x.ToProtoObject());
+			var cmds2 = cmdsInTransientCache.OrderBy(c => c.Index).Select(x => x.ToProtoObject());
 			combinedMeta.Commands.AddRange(cmds2);
 
 			return combinedMeta;
