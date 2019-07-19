@@ -5,14 +5,11 @@ namespace Binsync.Core.Services
 {
 	public interface IServiceFactory
 	{
-		int MaxConnections { get; }
 		IService Give();
 	}
 
 	class TestFactory : IServiceFactory
 	{
-		public int MaxConnections { get { return 3; } }
-
 		readonly string storagePath;
 		public TestFactory(string storagePath)
 		{
@@ -29,8 +26,6 @@ namespace Binsync.Core.Services
 	{
 		readonly Type serviceType = typeof(Usenet);
 
-		public int MaxConnections { get { return 3; } }
-
 		public IService Give()
 		{
 			return (IService)Activator.CreateInstance(serviceType);
@@ -41,12 +36,8 @@ namespace Binsync.Core.Services
 	{
 		readonly Func<T> svcGen;
 
-		int maxConnections;
-		public int MaxConnections { get { return maxConnections; } }
-
-		public DelegateFactory(int maxConnections, Func<T> svcGen)
+		public DelegateFactory(Func<T> svcGen)
 		{
-			this.maxConnections = maxConnections;
 			this.svcGen = svcGen;
 		}
 
