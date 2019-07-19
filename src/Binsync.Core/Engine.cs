@@ -663,14 +663,15 @@ namespace Binsync.Core
 
 		public class Credentials
 		{
-			public static Credentials WithNewStorageCode()
+			public string StorageCode;
+			public string Password;
+
+			public static string GenerateStorageCode()
 			{
 				var code = new byte[32];
 				Constants.RNG.GetBytes(code);
-				return new Credentials { StorageCode = code.ToHexString() };
+				return code.ToHexString();
 			}
-			public string StorageCode;
-			public string Password;
 		}
 	}
 
