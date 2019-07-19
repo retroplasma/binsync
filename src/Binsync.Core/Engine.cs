@@ -24,15 +24,10 @@ namespace Binsync.Core
 		DedupContext<byte[]> dedupCtxD = new DedupContext<byte[]>();
 		DedupContext dedupCtxU = new DedupContext();
 
-		public static Engine CreateDummy(string storageCode, string password, int totalConnections, int uploadConnections)
-		{
-			var path = "/tmp/binsync/";
-			var cachePath = Path.Combine(path, "cache");
-			var fac = new Services.TestFactory(Path.Combine(path, "dummystore"));
-			return new Engine(storageCode, password, cachePath, fac, totalConnections, uploadConnections);
-		}
+		public Generator Generator { get { return generator; } }
+		public string PublicHash { get { return identifier.PublicHash; } }
 
-		Engine(string storageCore, string password, string cachePath, IServiceFactory fac, int totalConnections, int uploadConnections)
+		public Engine(string storageCore, string password, string cachePath, IServiceFactory fac, int totalConnections, int uploadConnections)
 		{
 			if (!(totalConnections >= 1 && uploadConnections >= 1 && totalConnections >= uploadConnections))
 			{
