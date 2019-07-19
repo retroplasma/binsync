@@ -27,13 +27,13 @@ namespace Binsync.Core
 		public Generator Generator { get { return generator; } }
 		public string PublicHash { get { return identifier.PublicHash; } }
 
-		public Engine(string storageCore, string password, string cachePath, IServiceFactory fac, int totalConnections, int uploadConnections)
+		public Engine(Credentials credentials, string cachePath, IServiceFactory fac, int totalConnections, int uploadConnections)
 		{
 			if (!(totalConnections >= 1 && uploadConnections >= 1 && totalConnections >= uploadConnections))
 			{
 				throw new ArgumentException("connection counts must be >= 1 and total must be >= upload connection");
 			}
-			var key = Generator.DeriveKey(storageCode: storageCore, password: password);
+			var key = Generator.DeriveKey(storageCode: credentials.StorageCode, password: credentials.Password);
 			svcFactory = fac;
 			identifier = new Identifier(key);
 			encryption = new Encryption(identifier);
@@ -659,6 +659,18 @@ namespace Binsync.Core
 					finally { dedupSem.Release(); }
 				}
 			}
+		}
+
+		public class Credentials
+		{
+			public static Credentials WithNewStorageCode()
+			{
+				var code = new byte[32];
+				Constants.RNG.GetBytes(code);
+				return new Credentials { StorageCode = code.ToHexString() };
+			}
+			public string StorageCode;
+			public string Password;
 		}
 	}
 
