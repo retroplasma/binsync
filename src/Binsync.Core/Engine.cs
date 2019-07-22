@@ -287,6 +287,7 @@ namespace Binsync.Core
 				var segs = rels.Select(r => db.FindMatchingSegmentInAssurancesByPlainHash(r.PlainHash)).ToArray();
 				var tasks = rels.Select(async (r, i) =>
 				{
+					if (i == ours.i) return null;
 					return r.TmpDataCompressed?.GetDecompressed() ?? await DownloadChunk(segs[i].IndexID, parityAware: false);
 				});
 				var dl = await Task.WhenAll(tasks);
