@@ -90,31 +90,46 @@ namespace Binsync.Util
 		public IServiceFactory GetServiceFactory()
 		{
 			var config = new ConfigurationBuilder()
- 				.AddJsonFile(jsonFilePath)
- 				.Build();
-			var u = config.GetSection("usenet");
+				.AddJsonFile(jsonFilePath)
+				.Build();
 
-			var username = u["username"];
-			var password = u["password"];
-			var serverAddress = u["serverAddress"];
-			var useSSL = ((Func<string, bool>)(str =>
+
+			var svc = config["service"];
+			switch (svc)
 			{
-				if (str == "True") return true;
-				if (str == "False") return false;
-				throw new ArgumentException("Invalid bool");
-			}))(u["useSSL"]);
-			var port = ((Func<string, ushort>)(str =>
-				{
-					var p = ushort.Parse(str, System.Globalization.NumberStyles.Integer);
-					if (p == 0) throw new ArgumentException("Invalid port: 0");
-					return p;
-				}))(u["port"]);
-			var newsgroup = u["newsgroup"];
-			var postFromUser = u["postFromUser"];
+				case "usenet":
+					var u = config.GetSection("usenet");
 
-			return new Binsync.Core.Services.DelegateFactory<Usenet>(() => new Usenet(
-				username, password, serverAddress, useSSL, port, newsgroup, postFromUser
-			));
+					var username = u["username"];
+					var password = u["password"];
+					var serverAddress = u["serverAddress"];
+					var useSSL = ((Func<string, bool>)(str =>
+					{
+						if (str == "True") return true;
+						if (str == "False") return false;
+						throw new ArgumentException("Invalid bool");
+					}))(u["useSSL"]);
+					var port = ((Func<string, ushort>)(str =>
+						{
+							var p = ushort.Parse(str, System.Globalization.NumberStyles.Integer);
+							if (p == 0) throw new ArgumentException("Invalid port: 0");
+							return p;
+						}))(u["port"]);
+					var newsgroup = u["newsgroup"];
+					var postFromUser = u["postFromUser"];
+
+					return new DelegateFactory<Usenet>(() => new Usenet(
+						username, password, serverAddress, useSSL, port, newsgroup, postFromUser
+					));
+				case "testStorage":
+					var t = config.GetSection("testStorage");
+					var path = t["storagePath"];
+					return new DelegateFactory<TestDummy>(() => new TestDummy(
+						path
+					));
+				default:
+					throw new ArgumentException($"Invalid service '{svc}'");
+			}
 		}
 
 		public static string ExampleJSON(string storageCodeText)
@@ -124,6 +139,7 @@ namespace Binsync.Util
 		""storageCode"": """ + storageCodeText + @""",
 		""password"": ""hunter2""
 	},
+	""service"": ""usenet"",
 	""usenet"": {
 		""username"": ""foo"",
 		""password"": ""bar"",
