@@ -46,13 +46,57 @@ namespace Binsync.Core
 			db = new DB(Path.Combine(cachePath, identifier.PublicHash));
 		}
 
-		public void Load()
+		public async Task Load()
 		{
-			//assuranceContainer.RefillNewAssuranceNOTTHREADSAFE();
-			//assuranceContainer.RefillMainAssuranceNOTTHREADSAFE();
+			await FetchAssurances();
 		}
 
 		// TODO: assurance flush
+
+		public async Task FetchAssurances()
+		{
+			if (db.GetAllAssurancesFetched()) return;
+
+			var lastId = db.LastFetchedAssuranceID();
+			var nextId = lastId.HasValue ? lastId.Value + 1 : 0;
+
+			for (var i = nextId; ; i++)
+			{
+				var indexId = Generator.GenerateAssuranceID((uint)i);
+				var ok = false;
+				for (var r = 0; r < Constants.AssuranceReplicationCount; r++)
+				{
+					Constants.Logger.Log($"{i} Round {r}");
+					var locator = Generator.DeriveLocator(indexId, (uint)r);
+
+					var encrypted = await withServiceFromPool(serviceUsage.Down, async svc =>
+					{
+						return await Task.FromResult(svc.GetBody(locator));
+					});
+					if (encrypted == null) continue;
+					try
+					{
+						var decrypted = encryption.Decrypt(encrypted, locator);
+						var decompressed = decrypted.GetDecompressed();
+						var assurance = AssuranceSegment.FromByteArray(decompressed);
+						Constants.Logger.Log($"{i} OK. Found {assurance.Segments.Count} S, {assurance.ParityRelations.Count} PR");
+
+						var assurances = new List<AssuranceSegment>();
+						assurances.Add(assurance);
+						db.AddFetchedAssurances(assurances, (uint)i);
+						ok = true;
+						break;
+					}
+					catch (Exception ex)
+					{
+						Constants.Logger.Log(ex.Message);
+					}
+				}
+				if (!ok) break;
+			}
+			Constants.Logger.Log($"Assurances fetched");
+			db.SetAllAssurancesFetched();
+		}
 
 		public async Task UploadFile(string localPath, string remotePath)
 		{

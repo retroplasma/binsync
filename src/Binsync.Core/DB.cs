@@ -21,12 +21,29 @@ namespace Binsync.Core.Caches
 			con.CreateTable<SQLMap.Segment>();
 			con.CreateTable<SQLMap.ParityRelation>();
 			con.CreateTable<SQLMap.Command>();
+			con.CreateTable<SQLMap.Config>();
+
+			lock (con)
+			{
+				con.RunInTransaction(() =>
+				{
+					var conf = con.ExecuteScalar<int>("select count(*) from config");
+					if (conf > 0) return;
+					con.Insert(new SQLMap.Config { LastFetchedAssuranceID = null, AssurancesFetched = false });
+				});
+			}
 
 			this.cachePath = cachePath;
 		}
 
 		public class SQLMap
 		{
+			public class Config
+			{
+				public uint? LastFetchedAssuranceID { get; set; }
+				public bool AssurancesFetched { get; set; }
+			}
+
 			public class Segment
 			{
 				[PrimaryKey, AutoIncrement]
@@ -97,6 +114,68 @@ namespace Binsync.Core.Caches
 				public byte[] FileOrigin_Hash { get; set; } // hash of block
 				public long FileOrigin_Start { get; set; } // position of block in file
 				public uint FileOrigin_Size { get; set; } // size of block
+			}
+		}
+
+		public uint? LastFetchedAssuranceID()
+		{
+			lock (con)
+			{
+				return con.Table<SQLMap.Config>().First().LastFetchedAssuranceID;
+			}
+		}
+
+		public bool GetAllAssurancesFetched()
+		{
+			lock (con)
+			{
+				return con.ExecuteScalar<bool>("select assurancesFetched from config");
+			}
+		}
+
+		public void SetAllAssurancesFetched()
+		{
+			lock (con)
+			{
+				con.Execute("update config set assurancesFetched = ?", true);
+			}
+		}
+
+		public void AddFetchedAssurances(List<Formats.AssuranceSegment> assurances, uint lastIndex)
+		{
+			lock (con)
+			{
+				con.RunInTransaction(() =>
+				{
+					var lastCol = con.Query<SQLMap.ParityRelation>("select * from parityRelation order by collectionId desc limit 1");
+					var nextCol = lastCol.Count > 0 ? lastCol.First().CollectionID + 1 : 1;
+
+					var ss = assurances.SelectMany(i => i.Segments).Select(s => new SQLMap.Segment
+					{
+						IsNew = false,
+						IndexID = s.IndexID,
+						Replication = s.Replication,
+						PlainHash = s.PlainHash,
+						CompressedLength = s.CompressedLength
+					});
+					var prs = assurances.SelectMany(i => i.ParityRelations).Select((pr, col) =>
+						pr.DataPlainHashes.Select(h => new { h, p = false })
+						.Concat(pr.ParityPlainHashes.Select(h => new { h, p = true }))
+						.Select((hp, i) => new SQLMap.ParityRelation
+						{
+							IsNew = false,
+							State = SQLMap.ParityRelationState.Done,
+							CollectionID = nextCol + col,
+							ElementID = i + 1,
+							PlainHash = hp.h,
+							IsParityElement = hp.p,
+						})
+					).SelectMany(i => i);
+
+					con.InsertAll(ss);
+					con.InsertAll(prs);
+					con.Execute("update config set lastFetchedAssuranceID = ?", lastIndex);
+				});
 			}
 		}
 
