@@ -193,6 +193,7 @@ namespace Binsync.Core
 					{
 						db.AddNewAssuranceAndTmpData(indexId, (uint)r, hash, (uint)lengthForAssurance, compressed, _inAssuranceAdditionTransaction);
 					}
+					writeToCache(indexId.ToHexString(), bytes);
 					return;
 				}
 			}
@@ -254,7 +255,33 @@ namespace Binsync.Core
 			});
 		}
 
+		ConcurrentDictionary<string, byte[]> cache = new ConcurrentDictionary<string, byte[]>();
+		ConcurrentQueue<string> cacheQueue = new ConcurrentQueue<string>();
+
+		void writeToCache(string key, byte[] data, int cacheApproxMax = 100)
+		{
+			cache[key] = data;
+			cacheQueue.Enqueue(key);
+			if (cacheQueue.Count > cacheApproxMax && cacheQueue.TryDequeue(out key))
+				cache.TryRemove(key, out _);
+		}
+
 		async Task<byte[]> _downloadChunk(byte[] indexId, bool parityAware = true)
+		{
+			var key = indexId.ToHexString();
+			try
+			{
+				return cache[key];
+			}
+			catch (KeyNotFoundException)
+			{
+				var data = await _downloadChunkUncached(indexId, parityAware);
+				writeToCache(key, data);
+				return data;
+			}
+		}
+
+		async Task<byte[]> _downloadChunkUncached(byte[] indexId, bool parityAware = true)
 		{
 			var seg = db.FindMatchingSegmentInAssurancesByIndexId(indexId);
 			if (seg == null) throw new KeyNotFoundException($"segment at index '{indexId.ToHexString()}' not found");
@@ -305,6 +332,7 @@ namespace Binsync.Core
 						Broken = r.d == null,
 						RealLength = segs[r.i].CompressedLength
 					}).ToArray();
+				Constants.Logger.Log("broken: {0}/{1}", parityInfo1.Concat(parityInfo2).Where(i => i.Broken).Count(), parityInfo1.Length + parityInfo2.Length);
 				try
 				{
 					Constants.Logger.Log($"repairing {indexId.ToHexString()}");
