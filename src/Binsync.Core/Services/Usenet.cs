@@ -1,3 +1,5 @@
+//#define YENC_HEADER_FOOTER
+
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -84,10 +86,8 @@ namespace Binsync.Core.Services
 			{
 				using (MemoryStream ms = new MemoryStream())
 				{
-					var crc = new byte[4];
-					Download(nntpClient.RetrieveArticleBody(IdToMessageId(id)), ref crc, ms);
+					Download(nntpClient.RetrieveArticleBody(IdToMessageId(id)), ms);
 					var rawData = ms.ToArray();
-
 					return rawData;
 				}
 			}
@@ -107,15 +107,13 @@ namespace Binsync.Core.Services
 
 			Rfc977NntpClientWithExtensions nntpClient = client;
 
-			var crcv = new CRCValue();
-
 			var rawData = chunk.Data;
 
 			try
 			{
 				using (MemoryStream ms = new MemoryStream(rawData))
 				{
-					nntpClient.PostArticle(new ArticleHeadersDictionaryEnumerator(headers), Upload(rawData.Length, crcv, ms));
+					nntpClient.PostArticle(new ArticleHeadersDictionaryEnumerator(headers), Upload(rawData.Length, ms));
 				}
 			}
 			catch (Exception ex)
@@ -142,7 +140,7 @@ namespace Binsync.Core.Services
 			return true;
 		}
 
-		public void Download(IEnumerable<string> body, ref byte[] crchash, Stream outputStream)
+		public void Download(IEnumerable<string> body, Stream outputStream)
 		{
 			byte[] buffer = new byte[4096];
 			using (MemoryStream tmpStream = new MemoryStream())
@@ -150,10 +148,26 @@ namespace Binsync.Core.Services
 				tmpStream.Position = 0;
 				StreamWriter sw = new StreamWriter(tmpStream, System.Text.Encoding.GetEncoding("ISO-8859-1"));
 
-				foreach (string line in body)
+#if YENC_HEADER_FOOTER
+				List<string> lines = new List<string>(body);
+
+				if (lines.Count < 2) throw new InvalidDataException("Not enough data in article");
+				if (!lines[0].StartsWith("=ybegin")) throw new InvalidDataException("Must start with =ybegin");
+				if (!lines[lines.Count - 1].StartsWith("=yend")) throw new InvalidDataException("Must end with =yend");
+
+				lines.RemoveAt(0);
+				lines.RemoveAt(lines.Count - 1);
+
+				foreach (var line in lines)
 				{
 					sw.WriteLine(line);
 				}
+#else
+				foreach (var line in body)
+				{
+					sw.WriteLine(line);
+				}
+#endif
 
 				sw.Flush();
 				tmpStream.Position = 0;
@@ -168,16 +182,10 @@ namespace Binsync.Core.Services
 						outputStream.Write(buffer, 0, read);
 					}
 				}
-				crchash = yencDecoder.CRCHash;
 			}
 		}
 
-		public class CRCValue
-		{
-			public byte[] Crc32;
-		}
-
-		public IEnumerable<string> Upload(int size, CRCValue crcValue, Stream inputStream)
+		public IEnumerable<string> Upload(int size, Stream inputStream)
 		{
 			var yencEncoder = new YEncEncoder();
 			var buffer = new byte[4096];
@@ -204,13 +212,17 @@ namespace Binsync.Core.Services
 					tmpStream.Position = 0;
 					StreamReader sr = new StreamReader(tmpStream, System.Text.Encoding.GetEncoding("ISO-8859-1"));
 
+#if YENC_HEADER_FOOTER
+					yield return $"=ybegin line=128 size={size} name={Cryptography.GetRandomBytes(8).ToHexString()}.blob";
+#endif
 					while (sr.Peek() >= 0)
 					{
 						yield return sr.ReadLine();
 					}
-
+#if YENC_HEADER_FOOTER
+					yield return $"=yend size={size}";
+#endif
 				}
-				crcValue.Crc32 = yencEncoder.CRCHash;
 			}
 		}
 
