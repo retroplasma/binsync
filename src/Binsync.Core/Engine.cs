@@ -132,6 +132,17 @@ namespace Binsync.Core
 			}
 		}
 
+		public Task PushFileToMeta(List<MetaSegment.Command.FileOrigin> metaSegments, long fileSize, string remotePath)
+		{
+			return pushFileToMeta(metaSegments, fileSize, remotePath);
+		}
+
+		public Task UploadFileChunk(byte[] bytes, byte[] hash = null)
+		{
+			hash = hash ?? bytes.SHA256();
+			return uploadChunk(bytes, hash, generator.GenerateRawOrParityID(hash));
+		}
+
 		async Task uploadChunk(byte[] bytes, byte[] hash, byte[] indexId, Action _inAssuranceAdditionTransaction = null)
 		{
 			await dedupCtxU.Deduplicate(indexId, async () =>
