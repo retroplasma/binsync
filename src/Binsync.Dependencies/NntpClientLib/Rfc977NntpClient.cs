@@ -823,9 +823,8 @@ namespace NntpClientLib
             NntpReaderWriter.WriteLine("");
 			
             foreach (string s in body)
-            {
-				
-                if (s.StartsWith("."))
+            {				
+                if (s.Length > 0 && s[0] == '.')
                 {
                     NntpReaderWriter.Write(".");
                 }
