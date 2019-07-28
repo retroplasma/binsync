@@ -11,6 +11,7 @@ namespace NntpClientLib
         public NntpDateTime(DateTime dt)
         {
             m_dtime = dt;
+#pragma warning disable 0618
             m_utcOffset = System.TimeZone.CurrentTimeZone.GetUtcOffset(dt); 
         }
 
