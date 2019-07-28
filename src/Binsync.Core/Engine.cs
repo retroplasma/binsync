@@ -335,7 +335,9 @@ namespace Binsync.Core
 		{
 			var locator = this.generator.DeriveLocator(indexId, replication);
 			var compressed = bytes.GetCompressed();
-			var encrypted = encryption.Encrypt(compressed, locator);
+			var packed = new OverallSegment { Data = compressed };
+			packed.AddPadding();
+			var encrypted = encryption.Encrypt(packed.ToByteArray(), locator);
 			try
 			{
 				var ok = await withServiceFromPool(serviceUsage.Up, async svc =>
@@ -524,7 +526,8 @@ namespace Binsync.Core
 			{
 				throw new InvalidDataException($"data invalid for segment with index '{indexId.ToHexString()}' with r = {replication}", ex);
 			}
-			return decrypted.GetDecompressed();
+			var unpacked = OverallSegment.FromByteArray(decrypted);
+			return unpacked.Data.GetDecompressed();
 		}
 
 		SemaphoreSlim metaSem = new SemaphoreSlim(1, 1);
