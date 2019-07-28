@@ -48,12 +48,10 @@ namespace Binsync.Core
 
 		public async Task Load()
 		{
-			await FetchAssurances();
+			await _fetchAssurances();
 		}
 
-		// TODO: assurance flush
-
-		public async Task FetchAssurances()
+		public async Task _fetchAssurances()
 		{
 			if (db.GetAllAssurancesFetched()) return;
 
@@ -64,7 +62,7 @@ namespace Binsync.Core
 			{
 				var indexId = Generator.GenerateAssuranceID((uint)i);
 				var ok = false;
-				for (var r = 0; r < Constants.AssuranceReplicationCount; r++)
+				for (var r = 0; r < Constants.AssuranceReplicationSearchCount; r++)
 				{
 					Constants.Logger.Log($"{i} Round {r}");
 					try
@@ -92,6 +90,86 @@ namespace Binsync.Core
 			}
 			Constants.Logger.Log($"Assurances fetched");
 			db.SetAllAssurancesFetched();
+		}
+
+		public async Task FlushAssurances()
+		{
+			await flushParitySem.WaitAsync();
+			try
+			{
+				var tuple = db.NewAggregatedAssuranceSegmentWithFlushState();
+				if (null == tuple)
+				{
+					Console.WriteLine("No new assurances yet.");
+					return;
+				}
+				var seg = tuple.Item1;
+				var state = tuple.Item2;
+
+				Console.WriteLine("min s: " + state.MinSegmentID);
+				Console.WriteLine("max s: " + state.MaxSegmentID);
+				Console.WriteLine("min p: " + state.MinParityRelationCollectionID);
+				Console.WriteLine("max p: " + state.MaxParityRelationCollectionID);
+
+				var segs = seg.ToListOfByteArrays();
+
+				var lastFetchedAssuranceId = db.LastFetchedAssuranceID();
+				var nextAssuranceId = lastFetchedAssuranceId.HasValue ? (lastFetchedAssuranceId.Value + 1) : 0;
+				Console.WriteLine("next assurance id: " + nextAssuranceId);
+				Console.WriteLine("flushed count: " + state.FlushState.FlushedCount);
+				foreach (var si in segs.Select((s, i) => new { s, i }))
+				{
+					var segBytes = si.s;
+
+					if (si.i < state.FlushState.FlushedCount)
+					{
+						Console.WriteLine($"skip flushed index {si.i}");
+						continue;
+					}
+
+					var indexId = generator.GenerateAssuranceID(nextAssuranceId + (uint)si.i);
+
+					var invalidCount = 0;
+					var runs = 0;
+					for (uint r = 0; r < Math.Min(Constants.AssuranceReplicationSearchCount, Constants.AssuranceReplicationDefaultCount + invalidCount); r++)
+					{
+						runs++;
+						var ok = (await _uploadChunkBasic(segBytes, indexId, r)).OK;
+						if (!ok)
+						{
+							var b = await _downloadChunkBasic(indexId, r);
+							if (b == null || !b.SequenceEqual(segBytes))
+							{
+								invalidCount++;
+								Console.WriteLine("C: new invalid count" + invalidCount);
+							}
+							else
+							{
+								Console.WriteLine("B: recovered");
+							}
+						}
+						else
+						{
+							Console.WriteLine("A: normal ok");
+						}
+					}
+					Console.WriteLine("total runs" + runs);
+					var validRuns = runs - invalidCount;
+					Console.WriteLine("valid runs" + validRuns);
+					if (validRuns < Constants.AssuranceReplicationDefaultCount)
+					{
+						throw new Exception($"Probably not enough valid runs ({validRuns}). Please retry later.");
+					}
+
+					db.IncrementFlushedCount();
+				}
+
+				db.Flushed();
+			}
+			finally
+			{
+				flushParitySem.Release();
+			}
 		}
 
 		public async Task UploadFile(string localPath, string remotePath)

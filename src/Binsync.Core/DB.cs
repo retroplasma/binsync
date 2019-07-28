@@ -22,6 +22,7 @@ namespace Binsync.Core.Caches
 			con.CreateTable<SQLMap.ParityRelation>();
 			con.CreateTable<SQLMap.Command>();
 			con.CreateTable<SQLMap.Config>();
+			con.CreateTable<SQLMap.FlushState>();
 
 			lock (con)
 			{
@@ -42,6 +43,13 @@ namespace Binsync.Core.Caches
 			{
 				public uint? LastFetchedAssuranceID { get; set; }
 				public bool AssurancesFetched { get; set; }
+			}
+
+			public class FlushState
+			{
+				public int ProcessingMaxSegID { get; set; }
+				public long ProcessingMaxColID { get; set; }
+				public int FlushedCount { get; set; }
 			}
 
 			public class Segment
@@ -114,6 +122,122 @@ namespace Binsync.Core.Caches
 				public byte[] FileOrigin_Hash { get; set; } // hash of block
 				public long FileOrigin_Start { get; set; } // position of block in file
 				public uint FileOrigin_Size { get; set; } // size of block
+			}
+		}
+
+		public class TransientAssuranceFlushState
+		{
+			public int MinSegmentID;
+			public int MaxSegmentID;
+			public long MinParityRelationCollectionID;
+			public long MaxParityRelationCollectionID;
+			public SQLMap.FlushState FlushState;
+		}
+
+		public Tuple<Formats.AssuranceSegment, TransientAssuranceFlushState> NewAggregatedAssuranceSegmentWithFlushState()
+		{
+			List<SQLMap.Segment> ss = null;
+			List<SQLMap.ParityRelation> prs = null;
+			SQLMap.FlushState fs = null;
+
+			lock (con)
+			{
+				con.RunInTransaction(() =>
+				{
+					fs = con.Query<SQLMap.FlushState>("select * from flushstate").FirstOrDefault();
+					if (null == fs)
+					{
+						if (0 != con.ExecuteScalar<int>("select count(*) from parityrelation where state <> ?", SQLMap.ParityRelationState.Done))
+						{
+							throw new InvalidDataException("Must flush all parity first");
+						}
+
+						ss = con.Query<SQLMap.Segment>("select * from segment where isNew order by id");
+						prs = con.Query<SQLMap.ParityRelation>("select * from parityrelation where isNew and state = ? order by collectionId, elementId", SQLMap.ParityRelationState.Done);
+
+						if (ss.Count == 0 || prs.Count == 0)
+						{
+							return;
+						}
+
+						var smax = ss.Select(s => s.Id).Max();
+						var cmax = prs.Select(pr => pr.CollectionID).Max();
+
+						fs = new SQLMap.FlushState
+						{
+							FlushedCount = 0,
+							ProcessingMaxSegID = smax,
+							ProcessingMaxColID = cmax,
+						};
+
+						con.Insert(fs);
+					}
+					else
+					{
+						if (0 != con.ExecuteScalar<int>("select count(*) from parityrelation where state <> ? and collectionId <= ?", SQLMap.ParityRelationState.Done, fs.ProcessingMaxColID))
+						{
+							throw new InvalidDataException("Previous parity must have been flushed");
+						}
+						ss = con.Query<SQLMap.Segment>("select * from segment where isNew and id <= ? order by id", fs.ProcessingMaxSegID);
+						prs = con.Query<SQLMap.ParityRelation>("select * from parityrelation where isNew and state = ? and collectionId <= ? order by collectionId, elementId", SQLMap.ParityRelationState.Done, fs.ProcessingMaxColID);
+					}
+				});
+			}
+
+			if (fs == null) return null;
+
+			return new Tuple<Formats.AssuranceSegment, TransientAssuranceFlushState>
+			(
+				new Formats.AssuranceSegment
+				{
+					Segments = ss.Select(s => new Formats.AssuranceSegment.Segment
+					{
+						IndexID = s.IndexID,
+						Replication = s.Replication,
+						PlainHash = s.PlainHash,
+						CompressedLength = s.CompressedLength,
+					}).ToList(),
+					ParityRelations = prs.GroupBy(x => x.CollectionID).Select(g => new Formats.AssuranceSegment.ParityRelation
+					{
+						DataPlainHashes = g.Where(e => !e.IsParityElement).Select(e => e.PlainHash).ToArray(),
+						ParityPlainHashes = g.Where(e => e.IsParityElement).Select(e => e.PlainHash).ToArray(),
+					}).ToList()
+				},
+				new TransientAssuranceFlushState
+				{
+					MinSegmentID = ss.Select(s => s.Id).Min(),
+					MaxSegmentID = fs.ProcessingMaxSegID, //ss.Select(s => s.Id).Max(),
+					MinParityRelationCollectionID = prs.Select(pr => pr.CollectionID).Min(),
+					MaxParityRelationCollectionID = fs.ProcessingMaxColID, //prs.Select(pr => pr.CollectionID).Max(),
+					FlushState = fs,
+				}
+			);
+		}
+
+		public void IncrementFlushedCount()
+		{
+			lock (con)
+			{
+				con.Execute("update flushstate set flushedCount = 1 + flushedCount");
+			}
+		}
+
+		public void Flushed()
+		{
+			lock (con)
+			{
+				con.RunInTransaction(() =>
+				{
+					var fs = con.Query<SQLMap.FlushState>("select * from flushstate").First();
+					if (0 != con.ExecuteScalar<int>("select count(*) from parityrelation where state <> ? and collectionId <= ?", SQLMap.ParityRelationState.Done, fs.ProcessingMaxColID))
+					{
+						throw new InvalidDataException("Previous parity must have been flushed");
+					}
+					con.Execute("update segment set isNew = 0 where id <= ?", fs.ProcessingMaxSegID);
+					con.Execute("update parityrelation set isNew = 0 where collectionId <= ?", fs.ProcessingMaxColID);
+					con.Execute("update config set lastFetchedAssuranceID = lastFetchedAssuranceID + ?", fs.FlushedCount);
+					con.Execute("delete from flushstate");
+				});
 			}
 		}
 
