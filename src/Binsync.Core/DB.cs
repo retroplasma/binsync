@@ -235,7 +235,12 @@ namespace Binsync.Core.Caches
 					}
 					con.Execute("update segment set isNew = 0 where id <= ?", fs.ProcessingMaxSegID);
 					con.Execute("update parityrelation set isNew = 0 where collectionId <= ?", fs.ProcessingMaxColID);
-					con.Execute("update config set lastFetchedAssuranceID = lastFetchedAssuranceID + ?", fs.FlushedCount);
+
+					if (fs.FlushedCount <= 0) throw new InvalidDataException("flushed count must be > 0");
+
+					var l = con.Table<SQLMap.Config>().First().LastFetchedAssuranceID;
+					var n = (l.HasValue ? (int)l.Value : -1) + fs.FlushedCount;
+					con.Execute("update config set lastFetchedAssuranceID = ?", n);
 					con.Execute("delete from flushstate");
 				});
 			}
