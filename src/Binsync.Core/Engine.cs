@@ -67,17 +67,9 @@ namespace Binsync.Core
 				for (var r = 0; r < Constants.AssuranceReplicationCount; r++)
 				{
 					Constants.Logger.Log($"{i} Round {r}");
-					var locator = Generator.DeriveLocator(indexId, (uint)r);
-
-					var encrypted = await withServiceFromPool(serviceUsage.Down, async svc =>
-					{
-						return await Task.FromResult(svc.GetBody(locator));
-					});
-					if (encrypted == null) continue;
 					try
 					{
-						var decrypted = encryption.Decrypt(encrypted, locator);
-						var decompressed = decrypted.GetDecompressed();
+						var decompressed = await _downloadChunkBasic(indexId, (uint)r);
 						var assurance = AssuranceSegment.FromByteArray(decompressed);
 						Constants.Logger.Log($"{i} OK. Found {assurance.Segments.Count} S, {assurance.ParityRelations.Count} PR");
 
@@ -86,6 +78,10 @@ namespace Binsync.Core
 						db.AddFetchedAssurances(assurances, (uint)i);
 						ok = true;
 						break;
+					}
+					catch (ServiceException ex)
+					{
+						throw ex;
 					}
 					catch (Exception ex)
 					{
@@ -212,23 +208,15 @@ namespace Binsync.Core
 			}
 		}
 
-
 		async Task _uploadChunk(byte[] bytes, byte[] hash, byte[] indexId, bool isParity = false, Action _inAssuranceAdditionTransaction = null)
 		{
 			if (null != db.FindMatchingSegmentInAssurancesByIndexId(indexId))
 				return;
 			for (var r = 0; r < Constants.ReplicationAttemptCount; r++)
 			{
-				var locator = this.generator.DeriveLocator(indexId, (uint)r);
-				var compressed = bytes.GetCompressed();
-				var lengthForAssurance = isParity ? bytes.Length : compressed.Length; // MAYBE: prettier?
-				var encrypted = encryption.Encrypt(compressed, locator);
-				var ok = await withServiceFromPool(serviceUsage.Up, async svc =>
-				{
-					var randomSubject = Cryptography.GetRandomBytes(32).ToHexString();
-					var res = svc.Upload(new Chunk(locator, randomSubject, encrypted));
-					return await Task.FromResult(res);
-				});
+				var ur = await _uploadChunkBasic(bytes, indexId, (uint)r);
+				var ok = ur.OK;
+				var compressed = ur.CompressedData;
 
 				if (!ok)
 				{
@@ -238,8 +226,9 @@ namespace Binsync.Core
 				}
 				else
 				{
-					Constants.Logger.Log("Upload ok for " + (isParity ? "par" : "dat") + $" with {indexId.ToHexString()} with r = {r}"
-					+ $"\n  -> {locator}");
+					Constants.Logger.Log("Upload ok for " + (isParity ? "par" : "dat") + $" with {indexId.ToHexString()} with r = {r}");
+
+					var lengthForAssurance = isParity ? bytes.Length : compressed.Length; // MAYBE: prettier?
 					if (isParity)
 					{
 						db.AddNewAssurance(indexId, (uint)r, hash, (uint)lengthForAssurance, _inAssuranceAdditionTransaction);
@@ -254,6 +243,30 @@ namespace Binsync.Core
 			}
 			throw new Exception("Could not upload any replications");
 		}
+
+		public class UploadResult { public bool OK; public byte[] CompressedData; }
+
+		async Task<UploadResult> _uploadChunkBasic(byte[] bytes, byte[] indexId, uint replication)
+		{
+			var locator = this.generator.DeriveLocator(indexId, replication);
+			var compressed = bytes.GetCompressed();
+			var encrypted = encryption.Encrypt(compressed, locator);
+			try
+			{
+				var ok = await withServiceFromPool(serviceUsage.Up, async svc =>
+				{
+					var randomSubject = Cryptography.GetRandomBytes(32).ToHexString();
+					var res = svc.Upload(new Chunk(locator, randomSubject, encrypted));
+					return await Task.FromResult(res);
+				});
+				return new UploadResult { OK = ok, CompressedData = compressed };
+			}
+			catch (Exception ex)
+			{
+				throw new ServiceException($"service failed when uploading index '{indexId.ToHexString()}' with r = {replication}", ex);
+			}
+		}
+
 		SemaphoreSlim conSemT;
 		SemaphoreSlim conSemU;
 		ConcurrentBag<IService> services = new ConcurrentBag<IService>();
@@ -340,24 +353,13 @@ namespace Binsync.Core
 		{
 			var seg = db.FindMatchingSegmentInAssurancesByIndexId(indexId);
 			if (seg == null) throw new KeyNotFoundException($"segment at index '{indexId.ToHexString()}' not found");
-			var loc = generator.DeriveLocator(indexId, seg.Replication);
-			var data = await withServiceFromPool(serviceUsage.Down, async svc =>
-			{
-				var res = svc.GetBody(loc);
-				return await Task.FromResult(res);
-			});
-			byte[] decrypted = null;
 			try
 			{
-				if (data == null) throw new FileNotFoundException(@"data for segment with index '{indexId.ToHexString()}' not found");
-				try
-				{
-					decrypted = encryption.Decrypt(data, loc);
-				}
-				catch (Exception ex)
-				{
-					throw new InvalidDataException(@"data for segment with index '{indexId.ToHexString()}' is invalid", ex);
-				}
+				return await _downloadChunkBasic(indexId, seg.Replication);
+			}
+			catch (ServiceException ex)
+			{
+				throw ex;
 			}
 			catch (Exception)
 			{
@@ -406,6 +408,35 @@ namespace Binsync.Core
 				{
 					throw new NotEnoughParityException(@"not enough parity for segment with index '{indexId.ToHexString()}'", ex);
 				}
+			}
+		}
+
+		async Task<byte[]> _downloadChunkBasic(byte[] indexId, uint replication)
+		{
+			var locator = generator.DeriveLocator(indexId, replication);
+			byte[] data;
+			try
+			{
+				data = await withServiceFromPool(serviceUsage.Down, async svc =>
+				{
+					var res = svc.GetBody(locator);
+					return await Task.FromResult(res);
+				});
+			}
+			catch (Exception ex)
+			{
+				throw new ServiceException($"service failed when downloading index '{indexId.ToHexString()}' with r = {replication}", ex);
+			}
+
+			if (data == null) throw new FileNotFoundException($"data not found for segment with index '{indexId.ToHexString()}' with r = {replication}");
+			byte[] decrypted = null;
+			try
+			{
+				decrypted = encryption.Decrypt(data, locator);
+			}
+			catch (Exception ex)
+			{
+				throw new InvalidDataException($"data invalid for segment with index '{indexId.ToHexString()}' with r = {replication}", ex);
 			}
 			return decrypted.GetDecompressed();
 		}
@@ -776,5 +807,12 @@ namespace Binsync.Core
 		public MetaEntryOverwriteException() { }
 		public MetaEntryOverwriteException(string message) : base(message) { }
 		public MetaEntryOverwriteException(string message, Exception inner) : base(message, inner) { }
+	}
+
+	public class ServiceException : Exception
+	{
+		public ServiceException() { }
+		public ServiceException(string message) : base(message) { }
+		public ServiceException(string message, Exception inner) : base(message, inner) { }
 	}
 }
