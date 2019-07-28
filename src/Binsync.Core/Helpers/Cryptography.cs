@@ -126,6 +126,24 @@ namespace Binsync.Core.Helpers
 			Constants.RNG.GetBytes(bytes);
 			return bytes;
 		}
+
+		/// <summary>
+		/// Returns random int >= 0.
+		/// </summary>
+		/// <returns>The random int.</returns>
+		/// <param name="min">Minimum int</param>
+		/// <param name="max">Maximum int</param>
+		public static int GetRandomInt(int min, int max)
+		{
+			max++;
+			if (!(min >= 0)) throw new ArgumentException("min must be >= 0");
+			if (!(max >= 0)) throw new ArgumentException("max must be >= 0");
+			if (!(min < max)) throw new ArgumentException("min must be <= max");
+			uint scale = uint.MaxValue;
+			while (scale == uint.MaxValue)
+				scale = BitConverter.ToUInt32(GetRandomBytes(4), 0);
+			return (int)(min + (max - min) * (scale / (double)uint.MaxValue));
+		}
 		#endregion
 
 
