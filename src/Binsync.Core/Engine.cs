@@ -580,7 +580,12 @@ namespace Binsync.Core
 			return combinedMeta;
 		}
 
-		async Task pushFileToMeta(List<MetaSegment.Command.FileOrigin> metaSegments, long fileSize, string remotePath)
+		public async Task NewDirectory(string remotePath)
+		{
+			await pushFileToMeta(null, 0, remotePath + "/.ignore", true);
+		}
+
+		async Task pushFileToMeta(List<MetaSegment.Command.FileOrigin> metaSegments, long fileSize, string remotePath, bool ignoreFile = false)
 		{
 			await metaSem.WaitAsync();
 			try
@@ -688,39 +693,45 @@ namespace Binsync.Core
 					}
 					else
 					{
-						var fileName = Path.GetFileName(file);
-						var hasFile = null != allCommands.Where(c => c.MetaType == DB.SQLMap.CommandMetaType.Folder && c.FolderOrigin_Name == fileName).FirstOrDefault();
-						if (hasFile)
-							throw new MetaEntryOverwriteException($"File '{file}' would overwrite file in parent folder.");
-
-						// add file to folder
-						pushList.Add(new DB.SQLMap.Command
+						if (!ignoreFile)
 						{
-							IsNew = true,
-							Path = dir.full,
-							Index = i,
-							MetaType = DB.SQLMap.CommandMetaType.Folder,
-							CMD = DB.SQLMap.Command.CMDV.ADD,
-							TYPE = DB.SQLMap.Command.TYPEV.FILE,
-							FolderOrigin_Name = fileName,
-							FolderOrigin_FileSize = fileSize,
-						});
+							var fileName = Path.GetFileName(file);
+							var hasFile = null != allCommands.Where(c => c.MetaType == DB.SQLMap.CommandMetaType.Folder && c.FolderOrigin_Name == fileName).FirstOrDefault();
+							if (hasFile)
+								throw new MetaEntryOverwriteException($"File '{file}' would overwrite file in parent folder.");
+
+							// add file to folder
+							pushList.Add(new DB.SQLMap.Command
+							{
+								IsNew = true,
+								Path = dir.full,
+								Index = i,
+								MetaType = DB.SQLMap.CommandMetaType.Folder,
+								CMD = DB.SQLMap.Command.CMDV.ADD,
+								TYPE = DB.SQLMap.Command.TYPEV.FILE,
+								FolderOrigin_Name = fileName,
+								FolderOrigin_FileSize = fileSize,
+							});
+						}
 					}
 				}
 
-				// add blocks to file
-				pushList.AddRange(metaSegments.Select((ms, i) => new DB.SQLMap.Command
+				if (!ignoreFile)
 				{
-					IsNew = true,
-					Path = file,
-					Index = i,
-					MetaType = DB.SQLMap.CommandMetaType.File,
-					CMD = DB.SQLMap.Command.CMDV.ADD,
-					TYPE = DB.SQLMap.Command.TYPEV.BLOCK,
-					FileOrigin_Hash = ms.Hash,
-					FileOrigin_Size = ms.Size,
-					FileOrigin_Start = ms.Start,
-				}));
+					// add blocks to file
+					pushList.AddRange(metaSegments.Select((ms, i) => new DB.SQLMap.Command
+					{
+						IsNew = true,
+						Path = file,
+						Index = i,
+						MetaType = DB.SQLMap.CommandMetaType.File,
+						CMD = DB.SQLMap.Command.CMDV.ADD,
+						TYPE = DB.SQLMap.Command.TYPEV.BLOCK,
+						FileOrigin_Hash = ms.Hash,
+						FileOrigin_Size = ms.Size,
+						FileOrigin_Start = ms.Start,
+					}));
+				}
 
 				db.AddCommandsToTransientCache(pushList);
 			}
