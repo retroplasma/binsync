@@ -137,7 +137,14 @@ namespace Binsync.Core
 						var ok = (await _uploadChunkBasic(segBytes, indexId, r)).OK;
 						if (!ok)
 						{
-							var b = await _downloadChunkBasic(indexId, r);
+							byte[] b;
+							try
+							{
+								b = await _downloadChunkBasic(indexId, r);
+							}
+							catch (ServiceException ex) { throw ex; }
+							catch (Exception) { b = null; }
+
 							if (b == null || !b.SequenceEqual(segBytes))
 							{
 								invalidCount++;
