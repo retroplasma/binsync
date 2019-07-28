@@ -422,7 +422,8 @@ namespace Binsync.Core
 			catch (KeyNotFoundException)
 			{
 				var data = await _downloadChunkUncached(indexId, parityAware);
-				writeToCache(key, data);
+				if (data != null)
+					writeToCache(key, data);
 				return data;
 			}
 		}
@@ -450,7 +451,7 @@ namespace Binsync.Core
 				var tasks = rels.Select(async (r, i) =>
 				{
 					if (i == ours.i) return null;
-					return r.TmpDataCompressed?.GetDecompressed() ?? await DownloadChunk(segs[i].IndexID, parityAware: false);
+					return r.TmpDataCompressed?.GetDecompressed() ?? await _downloadChunk(segs[i].IndexID, parityAware: false);
 				});
 				var dl = await Task.WhenAll(tasks);
 				var parityInfo1 = dl.Select((d, i) => new { d, i }).Where(r => !rels[r.i].IsParityElement)
