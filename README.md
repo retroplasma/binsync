@@ -34,18 +34,20 @@ So far only tested on macOS:
 8. Add Usenet auth data to the JSON config (provider must support posting)
 8. **Remember the storage code and the password for the future**
 
-###### Run the WebDav server and binsync shell:
+###### Run the WebDAV server and binsync shell:
 
 1. Run `dotnet run /path/to/your/config.json --configuration=release`
 2. If the config is correct it should log lots of lines when it runs the first time. It checks if any data has been uploaded with this code+pw before.
 3. You should see this afterwards:
 <img src="https://user-images.githubusercontent.com/46618410/62015170-5bd84400-b1a9-11e9-873a-c5c957750473.png" />
 
-4. Connect to `http://localhost:5809/_dav` using Cyberduck or another program
-5. You can use it to view your files. The folder will be empty in the beginning though.
-6. You can create folders and files using Cyberduck: Write `write 1` into binsync's shell first to enable writing. Remember that writes cannot be reverted: They are append-only.
+###### Access your files (WebDAV):
 
-###### Flushing:
+1. Connect to `http://localhost:5809/_dav` using Cyberduck or another program
+2. You can use it to view your files. The folder will be empty in the beginning though.
+3. You can create folders and files using Cyberduck: Write `write 1` into binsync's shell first to enable writing. Remember that writes cannot be reverted: They are append-only.
+
+###### Flushing (binsync shell):
 
 1. A local cache will be saved according to you config. These files are important to have around before you use "`flush`". To flush to the Usenet you need to write `flush` into the shell. When it's done you should be able to restore everything using code+pw in theory. Make sure to not write and flush from multiple machines at the same time; this isn't safe. Frankly nothing of this is safe of course.
 2. Use `help` in binsync's shell for more info.
