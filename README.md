@@ -7,9 +7,10 @@ Private Incremental File Storage on Usenet
 A "deterministic vault" for storing private data in Usenet: Generate a code and a password and use it for incremental storage/retrieval of files. If you remember both code & password you can re-use it in the future. No metadata (like NZB) needed.
 [More details here.](https://gist.github.com/retroplasma/264d9fed2350feb19f977575981bb914)
 
-|Uploading (e.g. Cyberduck)| Viewing (e.g. VLC)|
-|--------------------|------------------------------|
-|![image](https://user-images.githubusercontent.com/46618410/62015423-cab69c80-b1ab-11e9-8535-ca61d83b1af1.png)|[![image](https://user-images.githubusercontent.com/46618410/62015451-0f423800-b1ac-11e9-954e-c03a66878b33.png)](https://peach.blender.org/about/)|
+|Uploading (e.g. Cyberduck)| Browsing (e.g. Finder)|Viewing (e.g. VLC)|
+|--------------------------|-----------------------|------------------|
+|<img src="https://user-images.githubusercontent.com/46618410/62015423-cab69c80-b1ab-11e9-8535-ca61d83b1af1.png" width="100%">|<img src="https://user-images.githubusercontent.com/46618410/62016594-5e3f9b80-b1b3-11e9-8f4b-3347799c822d.png" width="100%">|<a href="https://peach.blender.org/about/"><img src="https://user-images.githubusercontent.com/46618410/62015451-0f423800-b1ac-11e9-954e-c03a66878b33.png" width="100%"></a>|
+
 
 #### Important
 
