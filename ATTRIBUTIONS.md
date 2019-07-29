@@ -39,3 +39,7 @@
 **SQLite-net**
 
 * *by Krueger Systems*, MIT License
+
+**WebDavServer**
+
+* *by Fubar Development Junker*, MIT License
