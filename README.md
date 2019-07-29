@@ -2,10 +2,6 @@
 
 Private Incremental File Storage on Usenet
 
-#### Important
-
-**THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.**
-
 #### Description
 
 A "deterministic vault" for storing private data in Usenet: Generate a code and a password and use it for incremental storage/retrieval of files. If you remember both code & password you can re-use it in the future. No metadata (like NZB) needed.
@@ -14,6 +10,10 @@ A "deterministic vault" for storing private data in Usenet: Generate a code and 
 |Uploading (e.g. Cyberduck)| Viewing (e.g. VLC)|
 |--------------------|------------------------------|
 |![image](https://user-images.githubusercontent.com/46618410/62015423-cab69c80-b1ab-11e9-8535-ca61d83b1af1.png)|[![image](https://user-images.githubusercontent.com/46618410/62015451-0f423800-b1ac-11e9-954e-c03a66878b33.png)](https://peach.blender.org/about/)|
+
+#### Important
+
+**THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.**
 
 #### Status
 
