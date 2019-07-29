@@ -2,6 +2,7 @@
 
 A "deterministic vault" for storing private data in Usenet: Generate a code and a password and use it for incremental storage/retrieval of files. If you remember both code & password you can re-use it in the future. No metadata (like NZB) needed.
 [More details here.](https://gist.github.com/retroplasma/264d9fed2350feb19f977575981bb914)
+We can access the data using WebDAV:
 
 |Uploading (e.g. Cyberduck)| Browsing (e.g. Finder)|Viewing (e.g. VLC)|
 |--------------------------|-----------------------|------------------|
