@@ -49,5 +49,5 @@ So far only tested on macOS:
 
 ###### Flushing (binsync shell):
 
-1. A local cache (metadata, parity and journal) will be saved locally according to you config. These files are important to have around before you use "`flush`". To flush to the Usenet you need to write `flush` into the shell. When it's done you should be able to restore everything using code+pw in theory. Make sure to not write and flush from multiple machines at the same time; this isn't safe. Frankly nothing of this is safe of course.
+1. A local cache (metadata, residual parity and journal) will be saved locally according to you config. These files are important to have around before you use "`flush`". To flush to the Usenet you need to write `flush` into the shell. When it's done you should be able to restore everything using code+pw in theory. Make sure to not write and flush from multiple machines at the same time; this isn't safe. Frankly nothing of this is safe of course.
 2. Use `help` in binsync's shell for more info.
