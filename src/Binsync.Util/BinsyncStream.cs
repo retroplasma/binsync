@@ -37,6 +37,9 @@ namespace Binsync.Util
 
 		public override async Task<int> ReadAsync(byte[] buffer, int _offset, int count, CancellationToken cancellationToken)
 		{
+			if (length == 0)
+				return 0;
+
 			var pos = Position;
 			await _readSem.WaitAsync().ConfigureAwait(false);
 			try
