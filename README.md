@@ -4,7 +4,7 @@ A "deterministic vault" for storing private data in Usenet: Generate a code and 
 [More details here.](https://gist.github.com/retroplasma/264d9fed2350feb19f977575981bb914)
 We can access the data using WebDAV:
 
-<img src="https://user-images.githubusercontent.com/46618410/62355939-47c97500-b510-11e9-8985-b874dbb5a0fd.png">
+<img src="https://user-images.githubusercontent.com/46618410/62356784-25d0f200-b512-11e9-9cff-a408f636f593.png">
 
 
 #### Important
