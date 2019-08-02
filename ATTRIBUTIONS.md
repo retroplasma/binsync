@@ -43,3 +43,7 @@
 **WebDavServer**
 
 * *by Fubar Development Junker*, MIT License
+
+**Big Buck Bunny**
+
+* (c) copyright 2008, Blender Foundation / www.bigbuckbunny.org
