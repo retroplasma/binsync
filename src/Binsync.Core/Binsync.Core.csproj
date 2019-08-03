@@ -5,6 +5,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="protobuf-net" Version="2.4.0" />
     <PackageReference Include="sqlite-net-pcl" Version="1.5.231" />
   </ItemGroup>
 
