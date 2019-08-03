@@ -66,6 +66,7 @@ namespace Binsync.WebDavServer
 				ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
 			});
 
+			app.UseStaticFiles();
 			app.UseMvc();
 
 			lifetime.ApplicationStarted.Register(Shell.Launch);
