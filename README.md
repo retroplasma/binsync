@@ -20,6 +20,9 @@ We can have a "deterministic vault" in the Usenet by generating a storage code a
 The user interface is a WebDav server with a shell that can be used alongside browsing your files. The WebDav server supports reading and writing files and folders (append-only/[WORM](https://en.wikipedia.org/wiki/Write_once_read_many); no updates or deletion). Adding files has been tested with [Cyberduck](https://cyberduck.io/). Seeking into a file works, though the streaming speed hasn't been optimized yet aside from a simple look-ahead.
 
 #### Usage (from source)
+
+*Note: If you want to use a [precompiled release](https://github.com/retroplasma/binsync/releases), skip the first 3 setup steps and run `./Binsync.WebDavServer` in the extracted folder instead of `dotnet run`.*
+
 So far only tested on macOS:
 
 ###### Setup:
