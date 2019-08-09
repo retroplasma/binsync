@@ -28,10 +28,9 @@ So far only tested on macOS:
 2. Clone this repo
 3. Go to `binsync/src/Binsync.WebDavServer`
 4. Run `dotnet run`
-5. It shows an example JSON config file that needs to be created
-6. Run `dotnet run gen` to generate storage code. Paste it into JSON.
-7. Choose a password and put it into the JSON as well.
-8. Add Usenet auth data to the JSON config (provider must support posting)
+5. It shows an example JSON config file that needs to be created; includes a random storage code.
+6. Choose a password and put it into the JSON as well.
+7. Add Usenet auth data to the JSON config (provider must support posting)
 8. **Remember the storage code and the password for the future**
 
 ###### Run the WebDAV server and binsync shell:
