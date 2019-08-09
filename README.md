@@ -1,5 +1,7 @@
 # <img height="64px" title="binsync" alt="binsync logo" src="https://user-images.githubusercontent.com/46618410/60334970-0e479c00-999d-11e9-8d35-ce9ed160b3e0.png">
 
+[![Build Status](https://travis-ci.com/retroplasma/binsync.svg?branch=master)](https://travis-ci.com/retroplasma/binsync)
+
 A "deterministic vault" for storing private data in Usenet: Generate a code and a password and use it for incremental storage/retrieval of files. If you remember both code & password you can re-use it in the future; no metadata (like NZB) needed.
 [More details here.](https://gist.github.com/retroplasma/264d9fed2350feb19f977575981bb914)
 We can access the data using WebDAV:
