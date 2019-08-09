@@ -12,7 +12,7 @@ namespace Binsync.Util
 			{
 				Console.Error.WriteLine("Please specify path to config JSON file as argument.");
 				Console.Error.WriteLine("Example config.json:");
-				Console.Error.WriteLine(Binsync.Util.Config.ExampleJSON(storageCodeText: "GENERATE USING COMMAND LINE ARGUMENT 'gen'"));
+				Console.WriteLine(Binsync.Util.Config.ExampleJSON(storageCodeText: Engine.Credentials.GenerateStorageCode()));
 				return null;
 			}
 
