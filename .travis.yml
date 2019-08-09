@@ -1,0 +1,40 @@
+language: csharp
+mono: none
+dotnet: 2.1
+script:
+ - dir="$(pwd)"
+ - cd src/Binsync.Tests
+ - dotnet test
+ - cd ../Binsync.WebDavServer
+ - wds="$(pwd)"
+ - runtimes=( "osx-x64" "win-x64" "linux-x64" )
+ - |
+   for runtime in "${runtimes[@]}"
+   do
+     dotnet publish --runtime "$runtime" -c release --self-contained || exit 1
+   done || exit 1
+ - cd bin/release/netcoreapp2.1/
+ - sudo apt-get -y install zip
+ - out="$dir/zip_output"
+ - mkdir "$out"
+ - cur="$(pwd)"
+ - |
+   for runtime in "${runtimes[@]}"
+   do
+     cd "$cur/$runtime" &&
+     name="binsync-$TRAVIS_TAG-$runtime" &&
+     mkdir publish/images &&
+     cp "$wds/wwwroot/images/header_logo.png" publish/images/ &&
+     mv publish "$name" &&
+     zip -r "$out/$name.zip" "$name/" -r || exit 1
+   done || exit 1
+ - cd "$dir"
+deploy:
+  provider: releases
+  api_key: ${GITHUB_TOKEN}
+  skip_cleanup: true
+  file_glob: true
+  file: zip_output/*
+  on:
+    tags: true
+    overwrite: true
