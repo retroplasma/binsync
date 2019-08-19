@@ -23,8 +23,7 @@ script:
    do
      cd "$cur/$runtime" &&
      name="binsync-$TRAVIS_TAG-$runtime" &&
-     mkdir publish/images &&
-     cp "$wds/wwwroot/images/header_logo.png" publish/images/ &&
+     cp -R "$wds/wwwroot" publish/ &&
      mv publish "$name" &&
      zip -r "$out/$name.zip" "$name/" -r || exit 1
    done || exit 1
